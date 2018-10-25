@@ -965,7 +965,13 @@
       <grid name="lnd">1x1minNLDAS</grid>
       <grid name="rof">r0125westUS</grid>
     </model_grid>
+	<!-- Grids added by Farshid Felfelani 10-25-2018 -->
 	
+    <model_grid alias="3x3min_CONUS" compset="DATM.+CLM">
+      <grid name="atm">3x3minCONUS</grid>
+      <grid name="lnd">3x3minCONUS</grid>
+      <grid name="rof">r0125CONUS</grid>
+    </model_grid>	
 	
   </grids>
 
@@ -1450,6 +1456,19 @@
       <nx>256</nx> <ny>208</ny>
       <file grid="rtm">/glade/work/felfelan/DATA/cesm_InDATA/share/domains/domain.clm/domain.lnd.0.125x0.125_wUSA.nc</file>
       <desc>r0125 is 1/8 degree river routing grid for west USA</desc>
+    </domain>
+
+	<!-- Domains added by Farshid Felfelani 10-25-2018 -->
+	
+    <domain name="3x3minCONUS">
+      <nx>1160</nx> <ny>560</ny>
+      <file grid="atm|lnd">/glade/work/felfelan/CTSM/clm5.0/cime/tools/mapping/gen_domain_files/domain.lnd.3min_CONUS.181024.nc</file>
+      <desc>Exact 3min resolution which is ~ 5 km -- only valid for DATM/CLM compset</desc>
+    </domain>
+    <domain name="r0125CONUS">
+      <nx>464</nx> <ny>224</ny>
+      <file grid="rtm">/glade/work/felfelan/CTSM/clm5.0/cime/tools/mapping/gen_domain_files/domain.lnd.0.125d_CONUS.181024.nc</file>
+      <desc>r0125 is 1/8 degree river routing grid for CONUS</desc>
     </domain>
 	
 	
@@ -2292,7 +2311,12 @@
       <map name="LND2ROF_FMAPNAME">/glade/work/felfelan/DATA/cesm_InDATA/lnd/clm2/mappingdata/maps/map_lnd_1x1min_westUSA_TO_rtm_0.125x0.125_wUSA_aave.180926.nc</map>
       <map name="ROF2LND_FMAPNAME">/glade/work/felfelan/DATA/cesm_InDATA/lnd/clm2/mappingdata/maps/map_rtm_0.125x0.125_wUSA_TO_lnd_1x1min_westUSA_aave.180926.nc</map>
     </gridmap>	
-	
+
+	<!-- Maps added by Farshid Felfelani 10-25-2018 -->
+    <gridmap lnd_grid="3x3minCONUS" rof_grid="r0125CONUS">
+      <map name="LND2ROF_FMAPNAME">/glade/work/felfelan/CTSM/clm5.0/cime/tools/mapping/gen_mapping_files/from_nomask_modifiedNOfilled_c181024_CONUS_regional/map_lnd_3min_CONUS_TO_rtm_0.125d_CONUS_aave.181024.nc</map>
+      <map name="ROF2LND_FMAPNAME">/glade/work/felfelan/CTSM/clm5.0/cime/tools/mapping/gen_mapping_files/from_nomask_modifiedNOfilled_c181024_CONUS_regional/map_rtm_0.125d_CONUS_TO_lnd_3min_CONUS_aave.181024.nc</map>
+    </gridmap>
 	
   </gridmaps>
 
