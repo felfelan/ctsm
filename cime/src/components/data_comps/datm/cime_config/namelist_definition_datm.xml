@@ -190,7 +190,7 @@
       <value stream="CLM_QIAN">$DIN_LOC_ROOT/atm/datm7</value>
       <value stream="CLMCRUNCEPv7">$DIN_LOC_ROOT_CLMFORC/atm_forcing.datm7.cruncep_qianFill.0.5d.v7.c160715</value>
       <value stream="CLMCRUNCEP">$DIN_LOC_ROOT/share/domains/domain.clm</value>
-      <value stream="CLMGSWP3v1">/glade/p_old/work/felfelan/DATA/cesm_InDATA/share/domains/domain.clm/domainFILES_from_map180716_fromRevVerSCRIP</value>
+      <value stream="CLMGSWP3v1">/glade/work/felfelan/DATA/cesm_InDATA/share/domains/domain.clm/domainFILES_from_map180716_fromRevVerSCRIP</value>
       <value stream="CLMCRUNCEP\.">$DIN_LOC_ROOT/share/domains/domain.clm</value>
       <value stream="CLMCRUNCEP_V5">$DIN_LOC_ROOT_CLMFORC/atm_forcing.datm7.cruncep_qianFill.0.5d.V5.c140715</value>
       <value stream="CLMGSWP3">$DIN_LOC_ROOT_CLMFORC/atm_forcing.datm7.GSWP3.0.5d.v1.c170516</value>
