@@ -87,7 +87,10 @@ contains
     soilhydrology_inst%wa_col(bounds%begc:bounds%endc)  = aquifer_water_baseline
     soilhydrology_inst%zwt_col(bounds%begc:bounds%endc) = 0._r8
 
-    allocate(wtd_Fan(bounds%begg:bounds%endg))	
+    allocate(wtd_Fan(bounds%begg:bounds%endg))
+    call getfil (fsurdat, locfn, 0)
+    call ncd_pio_openfile (ncid, locfn, 0)
+
     call ncd_io(ncid=ncid, varname='WTD', flag='read', data=wtd_Fan, dim1name=grlnd, readvar=readvar)
     if (.not. readvar) then
        call endrun(msg=' ERROR: WTD NOT on surfdata file'//errMsg(sourcefile, __LINE__)) 
@@ -97,8 +100,6 @@ contains
     !   soilstate_inst%wtdFan_col(c) = wtd_Fan(g)
     !end do
     !deallocate(wtd_Fan)
-	
-	
 	
     do c = bounds%begc,bounds%endc
        g = col%gridcell(c)
@@ -110,7 +111,7 @@ contains
                 ! seem implicitly related to aquifer_water_baseline
                 soilhydrology_inst%wa_col(c)  = 4800._r8
                 !soilhydrology_inst%zwt_col(c) = (25._r8 + col%zi(c,nlevsoi)) - soilhydrology_inst%wa_col(c)/0.2_r8 /1000._r8  ! One meter below soil column
-				soilhydrology_inst%zwt_col(c) = wtd_Fan(g)
+                soilhydrology_inst%zwt_col(c) = wtd_Fan(g)
              else
                 soilhydrology_inst%wa_col(c)  = spval
                 soilhydrology_inst%zwt_col(c) = spval
@@ -123,7 +124,9 @@ contains
              ! implicitly related to aquifer_water_baseline
              soilhydrology_inst%wa_col(c)  = 4000._r8
              !soilhydrology_inst%zwt_col(c) = (25._r8 + col%zi(c,nlevsoi)) - soilhydrology_inst%wa_col(c)/0.2_r8 /1000._r8  ! One meter below soil column
-			 soilhydrology_inst%zwt_col(c) = wtd_Fan(g)
+             soilhydrology_inst%zwt_col(c) = wtd_Fan(g)
+             write(*,*) 'Felfelani      WTD Fan et al soilhydrology_inst%zwt_col(c), wtd_Fan(g)', soilhydrology_inst%zwt_col(c), wtd_Fan(g)
+			 
              ! initialize frost_table, zwt_perched to bottom of soil column
              soilhydrology_inst%zwt_perched_col(c) = col%zi(c,nlevsoi)
              soilhydrology_inst%frost_table_col(c) = col%zi(c,nlevsoi)
