@@ -576,6 +576,8 @@ contains
      ! !USES:
      use clm_time_manager , only : get_step_size, get_prev_date
      use clm_varcon       , only : pondmx, tfrz, watmin,denice,denh2o
+     use clm_varctl       , only : iulog
+     use shr_sys_mod      , only : shr_sys_flush
      use clm_varpar       , only : nlevsoi
      use column_varcon    , only : icol_roof, icol_road_imperv
      use decompMod        , only : get_proc_bounds
@@ -694,6 +696,7 @@ contains
  
        end do 
        write(iulog,*) 'FFelfelani: 2222222222222222222222'
+       call shr_sys_flush(iulog)
 
        ! Get time step
 
