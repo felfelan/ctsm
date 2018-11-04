@@ -125,7 +125,7 @@ contains
              soilhydrology_inst%wa_col(c)  = 4000._r8
              !soilhydrology_inst%zwt_col(c) = (25._r8 + col%zi(c,nlevsoi)) - soilhydrology_inst%wa_col(c)/0.2_r8 /1000._r8  ! One meter below soil column
              soilhydrology_inst%zwt_col(c) = wtd_Fan(g)
-             write(*,*) 'Felfelani      WTD Fan et al soilhydrology_inst%zwt_col(c), wtd_Fan(g)', soilhydrology_inst%zwt_col(c), wtd_Fan(g)
+             !write(*,*) 'Felfelani      WTD Fan et al soilhydrology_inst%zwt_col(c), wtd_Fan(g)', soilhydrology_inst%zwt_col(c), wtd_Fan(g)
 			 
              ! initialize frost_table, zwt_perched to bottom of soil column
              soilhydrology_inst%zwt_perched_col(c) = col%zi(c,nlevsoi)
