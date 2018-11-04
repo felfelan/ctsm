@@ -574,10 +574,12 @@ contains
      ! Calculate watertable, considering aquifer recharge but no drainage.
      !
      ! !USES:
-     use clm_time_manager , only : get_step_size
+     use clm_time_manager , only : get_step_size, get_prev_date
      use clm_varcon       , only : pondmx, tfrz, watmin,denice,denh2o
      use clm_varpar       , only : nlevsoi
      use column_varcon    , only : icol_roof, icol_road_imperv
+     use decompMod        , only : get_proc_bounds
+     use GridcellType     , only : grc   
      !
      ! !ARGUMENTS:
      type(bounds_type)        , intent(in)    :: bounds  
@@ -628,6 +630,14 @@ contains
      real(r8) :: q_perch
      real(r8) :: q_perch_max
      real(r8) :: dflag=0._r8
+
+!     real(r8), pointer :: londeg(:)      ! longitude (degrees) (for calculation of local time)
+!     real(r8), pointer :: latdeg(:)      ! latitude (degrees) (for calculation of local time)
+     integer  :: g                               !indices	 
+     integer  :: yr                       ! year at start of time step
+     integer  :: mon                      ! month at start of time step
+     integer  :: day                      ! day at start of time step
+     integer  :: time                     ! time at start of time step (seconds after 0Z)
      !-----------------------------------------------------------------------
 
      associate(                                                            & 
@@ -665,6 +675,25 @@ contains
           qflx_drain_perched =>    waterflux_inst%qflx_drain_perched_col , & ! Output: [real(r8) (:)   ]  perched wt sub-surface runoff (mm H2O /s)         
           qflx_rsub_sat      =>    waterflux_inst%qflx_rsub_sat_col        & ! Output: [real(r8) (:)   ]  soil saturation excess [mm h2o/s]                 
           )
+
+!          londeg             =>  grc%londeg
+!          latdeg             =>  grc%latdeg
+
+       ! FFelfelani Get the time
+       call get_prev_date(yr, mon, day, time)  ! get time as of beginning of time step
+       !call get_proc_bounds (begg, endg, begl, endl, begc, endc, begp, endp)
+       write(iulog,*) 'FFelfelani: 1111111111111111111111'
+
+       do fc = 1, num_hydrologyc
+          c = filter_hydrologyc(fc)
+          g = col%gridcell(c)
+ 
+          !if (grc%latdeg(g) < 35.0 .and. grc%latdeg(g) > 34.7 .and. grc%londeg(g) > 257.0 .and. grc%londeg(g) < 257.3) then
+          write(iulog,*) 'FFelfelani: lat, lon, yr, mon, day, time, g, c, zwt(c)', grc%latdeg(g), grc%londeg(g), yr, mon, day, time, g, c, zwt(c)
+          !end if 
+ 
+       end do 
+       write(iulog,*) 'FFelfelani: 2222222222222222222222'
 
        ! Get time step
 
