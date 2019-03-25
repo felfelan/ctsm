@@ -239,6 +239,9 @@ contains
     ! Set ldecomp
 
     allocate(ldecomp%gdc2glo(numg), stat=ier)
+	allocate(ldecomp%ixy(numg), stat=ier)
+    allocate(ldecomp%jxy(numg), stat=ier)
+	
     if (ier /= 0) then
        write(iulog,*) 'decompInit_lnd(): allocation error1 for ldecomp, etc'
        call endrun(msg=errMsg(sourcefile, __LINE__))
@@ -250,6 +253,8 @@ contains
     end if
 
     ldecomp%gdc2glo(:) = 0
+    ldecomp%ixy(:) = 0
+    ldecomp%jxy(:) = 0
     ag = 0
 
     ! clumpcnt is the start gdc index of each clump
@@ -268,14 +273,20 @@ contains
     ! now go through gridcells one at a time and increment clumpcnt
     ! in order to set gdc2glo
 
-    do aj = 1,lnj
-    do ai = 1,lni
-       an = (aj-1)*lni + ai
-       cid = lcid(an)
+    do aj = 1,lnj				! FFelfelani Comment: going through all grid cells in y direction (lnj)
+    do ai = 1,lni				! FFelfelani Comment: going through all grid cells in x direction (lni)
+       an = (aj-1)*lni + ai		! FFelfelani Comment: assigning 1D grid cell index to an
+       cid = lcid(an)			! FFelfelani Comment: getting the clump id/index of the grid cell
        if (cid > 0) then
-          ag = clumpcnt(cid)
+          ag = clumpcnt(cid)	! FFelfelani Comment: this one gets the first grid cell index of the clump
           ldecomp%gdc2glo(ag) = an
-          clumpcnt(cid) = clumpcnt(cid) + 1
+          ldecomp%ixy(ag) = ai
+          ldecomp%jxy(ag) = aj
+		  
+		  ! FFelfelani Comment: add 1 to the index of the first grid cell of the clump
+		  ! so, next time if the grid cell is in the same clump, ag becomes the 1 + the
+		  ! the initial grid cell index of the clump
+          clumpcnt(cid) = clumpcnt(cid) + 1 
        end if
     end do
     end do
