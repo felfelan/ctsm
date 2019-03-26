@@ -114,7 +114,7 @@ module decompMod
   !--- gdc = 1d global dc ordered compressed
   type decomp_type
      integer,pointer :: gdc2glo(:)    ! 1d gdc to 1d glo
-     integer,pointer :: ixy(:)        ! i and j indices
+     integer,pointer :: ixy(:)        ! FFelfelani Comment: i and j indices
      integer,pointer :: jxy(:)        ! relative to the grid cell vector
   end type decomp_type
   public decomp_type
