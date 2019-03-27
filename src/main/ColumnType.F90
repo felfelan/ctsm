@@ -52,7 +52,7 @@ module ColumnType
      real(r8), pointer :: micro_sigma          (:)   ! microtopography pdf sigma (m)
      real(r8), pointer :: n_melt               (:)   ! SCA shape parameter
      real(r8), pointer :: topo_slope           (:)   ! gridcell topographic slope
-     real(r8), pointer :: GW_ratio             (:)   ! FFelfelani Comment: gridcell USGS GW ratio
+     real(r8), pointer :: GW_ratio             (:)   ! FFelfelani Comment: column USGS GW ratio
      real(r8), pointer :: topo_std             (:)   ! gridcell elevation standard deviation
 
      ! vertical levels
