@@ -21,7 +21,8 @@ Module HydrologyNoDrainageMod
   use CanopyStateType   , only : canopystate_type
   use LandunitType      , only : lun                
   use ColumnType        , only : col                
-  use TopoMod, only : topo_type
+  use TopoMod           , only : topo_type
+  use IrrigationMod     , only : irrigation_type
   !
   ! !PUBLIC TYPES:
   implicit none
