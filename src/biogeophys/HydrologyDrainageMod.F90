@@ -83,6 +83,7 @@ contains
     associate(                                                         & ! Input: layer thickness depth (m)  
          dz                 => col%dz                                , & ! Input: column type
          ctype              => col%itype                             , & ! Input: gridcell flux of flood water from RTM            
+         GW_ratio           => col%GW_ratio                          , & ! Input:  [real(r8) (:)   ]  USGS GW ratio as irrigation source  
          qflx_floodg        => atm2lnd_inst%forc_flood_grc           , & ! Input: rain rate [mm/s]   
          forc_rain          => atm2lnd_inst%forc_rain_downscaled_col , & ! Input: snow rate [mm/s]
          forc_snow          => atm2lnd_inst%forc_snow_downscaled_col , & ! Input: water mass begining of the time step     
@@ -208,7 +209,7 @@ contains
          qflx_runoff(c) = qflx_drain(c) + qflx_surf(c)  + qflx_h2osfc_surf(c) + qflx_qrgwl(c) + qflx_drain_perched(c)
 
          if ((lun%itype(l)==istsoil .or. lun%itype(l)==istcrop) .and. col%active(c)) then
-            qflx_runoff(c) = qflx_runoff(c) - qflx_irrig(c)
+            qflx_runoff(c) = qflx_runoff(c) - (1._r8 - GW_ratio(c)) * qflx_irrig(c)
          end if
          if (lun%urbpoi(l)) then
             qflx_runoff_u(c) = qflx_runoff(c)
