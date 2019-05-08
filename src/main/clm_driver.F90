@@ -701,7 +701,7 @@ contains
             clm_fates,                                                         &
             atm2lnd_inst, soilstate_inst, energyflux_inst, temperature_inst,   &
             waterflux_inst, waterstate_inst, soilhydrology_inst, aerosol_inst, &
-            canopystate_inst, soil_water_retention_curve, topo_inst)
+            canopystate_inst, soil_water_retention_curve, topo_inst, irrigation_inst)
 
        ! The following needs to be done after HydrologyNoDrainage (because it needs
        ! waterflux_inst%qflx_snwcp_ice_col), but before HydrologyDrainage (because
