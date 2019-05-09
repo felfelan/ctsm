@@ -54,15 +54,22 @@ module SoilWaterMovementMod
   integer, parameter :: bc_waterTable = 3
   integer, parameter :: bc_aquifer    = 4
 
+  ! FFelfelani Comment: Groundwater Scheme
+  integer, parameter :: gw_default  = 0
+  integer, parameter :: gw_Theim_FanTransmiss  = 1
+  integer, parameter :: gw_Theim_GleesonTransmiss  = 2
+  integer, parameter :: gw_Fan  = 3
+  
   ! Soil hydraulic properties
   integer, parameter :: soil_hp_clapphornberg_1978=0
   integer, parameter :: soil_hp_vanGenuchten_1980=1
 
   real(r8),parameter :: m_to_mm = 1.e3_r8 !convert meters to mm
 
-  integer :: soilwater_movement_method    ! method for solving richards equation
-  integer :: upper_boundary_condition     ! named variable for the boundary condition
-  integer :: lower_boundary_condition     ! named variable for the boundary condition
+  integer         :: soilwater_movement_method    ! method for solving richards equation
+  integer         :: upper_boundary_condition     ! named variable for the boundary condition
+  integer         :: lower_boundary_condition     ! named variable for the boundary condition
+  integer, public :: groundwater_scheme           ! FFelfelani Comment: named variable for groundwater scheme
 
   ! Adaptive time stepping algorithmic control parameters
   real(r8) :: dtmin             ! minimum time step length (seconds)
@@ -116,7 +123,8 @@ contains
          xTolerLower,                  &
          expensive,                    &
          inexpensive,                  &
-         flux_calculation
+         flux_calculation,             &
+         groundwater_scheme
 
     ! Default values for namelist
 
@@ -131,7 +139,8 @@ contains
     expensive=42
     inexpensive=1
     flux_calculation=inexpensive  
-
+    groundwater_scheme=gw_default
+	
     ! Read soilwater_movement namelist
     if (masterproc) then
        nu_nml = getavu()
@@ -156,11 +165,20 @@ contains
        if((use_bedrock) .and. (lower_boundary_condition /= bc_zero_flux)) then
           call endrun(subname // ':: ERROR inconsistent soilwater_movement namelist: use_bedrock requires bc_zero_flux lbc')
        endif
+
+! FFelfelani Comment: test for namelist consistency
+       if((groundwater_scheme == gw_Theim_FanTransmiss) .and. &
+            (lower_boundary_condition < 3)) then
+          call endrun(subname // ':: ERROR inconsistent groundwater_scheme namelist: gw_Theim_FanTransmiss must use bc_aquifer/bc_waterTable')
+       endif
+   
+
     endif
 
     call shr_mpi_bcast(soilwater_movement_method, mpicom)
     call shr_mpi_bcast(upper_boundary_condition, mpicom)
     call shr_mpi_bcast(lower_boundary_condition, mpicom)
+    call shr_mpi_bcast(groundwater_scheme, mpicom)
     call shr_mpi_bcast(dtmin, mpicom)
     call shr_mpi_bcast(verySmall, mpicom)
     call shr_mpi_bcast(xTolerUpper, mpicom)
@@ -177,7 +195,8 @@ contains
        write(iulog,*) '  soilwater_movement_method  = ',soilwater_movement_method
        write(iulog,*) '  upper_boundary_condition   = ',upper_boundary_condition
        write(iulog,*) '  lower_boundary_condition   = ',lower_boundary_condition
-
+       write(iulog,*) '  groundwater_scheme         = ',groundwater_scheme
+	   
        write(iulog,*) '  use_bedrock                = ',use_bedrock
        write(iulog,*) '  dtmin                      = ',dtmin
        write(iulog,*) '  verySmall                  = ',verySmall
