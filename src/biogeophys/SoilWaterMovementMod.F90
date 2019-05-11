@@ -69,7 +69,7 @@ module SoilWaterMovementMod
   integer         :: soilwater_movement_method    ! method for solving richards equation
   integer         :: upper_boundary_condition     ! named variable for the boundary condition
   integer         :: lower_boundary_condition     ! named variable for the boundary condition
-  integer, public :: groundwater_scheme           ! FFelfelani Comment: named variable for groundwater scheme
+  !integer, public, parameter :: groundwater_scheme           ! FFelfelani Comment: named variable for groundwater scheme
 
   ! Adaptive time stepping algorithmic control parameters
   real(r8) :: dtmin             ! minimum time step length (seconds)
@@ -99,7 +99,7 @@ contains
     use fileutils       , only : getavu, relavu
     use spmdMod         , only : mpicom, masterproc
     use shr_mpi_mod     , only : shr_mpi_bcast
-    use clm_varctl      , only : iulog, use_bedrock
+    use clm_varctl      , only : iulog, use_bedrock, groundwater_scheme
     use controlMod      , only : NLFilename
     use clm_nlUtilsMod  , only : find_nlgroup_name
 
