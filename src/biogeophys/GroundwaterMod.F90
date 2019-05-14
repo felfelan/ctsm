@@ -51,7 +51,7 @@ module GroundwaterMod
   use WaterfluxType     , only : waterflux_type
   use WaterstateType    , only : waterstate_type
   use IrrigationMod     , only : irrigation_type
-
+  use spmdMod           , only : iam  ! FFelfelani: to get processor number
   ! !PUBLIC TYPES:
   implicit none
   private
@@ -247,7 +247,7 @@ contains
 
                 end if  ! find surrounding neighbors
              end do  ! g_in
-          end if  ! neighbors_count > 0     
+          end if  ! neighbors_count > 0      
        end do  ! g_out loop
 
        AqTransmiss = TransmissivityFromFan(bounds, num_hydrologyc, filter_hydrologyc, soilstate_inst, soilhydrology_inst)	   
@@ -256,12 +256,21 @@ contains
           c = filter_hydrologyc(fc)
           g = col%gridcell(c)
 
+          if (grc%latdeg(g) < 34.03 .and. grc%latdeg(g) > 34.02 .and. grc%londeg(g) < 257.03 .and. grc%londeg(g) > 257.02) then
+              write(*,*) 'Felfelani: Processor Num: g, lat(g), lon(g), zwt(c)', iam, g, grc%latdeg(j), grc%londeg(j), zwt(c)
+          end if
+
+ 
           zwt(c) = GW_sum_glob(g) + &
                   ((GW_ratio(c) * qflx_irrig(c) * grc%area(g) * km2_to_mm2) / (2 * SHR_CONST_PI * AqTransmiss(c)) + &
                   (qcharge(c) * (0.208_r8 * sqrt(grc%area(g)) * km_to_mm)**2/(2 * AqTransmiss(c)))) * log(1/0.208_r8) * mm_to_m - &
                   (qcharge(c) * grc%area(g) * km2_to_mm2 * (1-0.208_r8**2)/(4 * AqTransmiss(c))) * mm_to_m	
 
           wa(c)  = wa(c) - GW_ratio(c) * qflx_irrig(c) * dtime
+
+          if (grc%latdeg(g) < 34.03 .and. grc%latdeg(g) > 34.02 .and. grc%londeg(g) < 257.03 .and. grc%londeg(g) > 257.02) then
+              write(*,*) 'Felfelani: Processor Num: g, lat(g), lon(g), zwt(c)', iam, g, grc%latdeg(j), grc%londeg(j), zwt(c)
+          end if
 
        end do       
 	   
