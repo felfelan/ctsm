@@ -299,12 +299,42 @@ contains
 
        if ( found ) then
 
-          write(iulog,*)'WARNING:  water balance error ',&
+          write(iulog,*)'WARNING:  water balance error ',& 
                ' nstep= ',nstep, &
                ' local indexc= ',indexc,&
                ! ' global indexc= ',GetGlobalIndex(decomp_index=indexc, clmlevel=namec), &
                ' errh2o= ',errh2o(indexc)
 
+
+
+          write(iulog,*)'clm model is stopping - error is greater than 1e-5 (mm)'
+          write(iulog,*)'nstep                 = ',nstep
+          write(iulog,*)'errh2o                = ',errh2o(indexc)
+          write(iulog,*)'forc_rain             = ',forc_rain_col(indexc)*dtime
+          write(iulog,*)'forc_snow             = ',forc_snow_col(indexc)*dtime
+          write(iulog,*)'total_plant_stored_h2o_col = ',total_plant_stored_h2o_col(indexc)
+          write(iulog,*)'endwb                 = ',endwb(indexc)
+          write(iulog,*)'begwb                 = ',begwb(indexc)
+             
+          write(iulog,*)'qflx_evap_tot         = ',qflx_evap_tot(indexc)*dtime
+          write(iulog,*)'qflx_irrig            = ',qflx_irrig(indexc)*dtime
+          write(iulog,*)'qflx_surf             = ',qflx_surf(indexc)*dtime
+          write(iulog,*)'qflx_h2osfc_surf      = ',qflx_h2osfc_surf(indexc)*dtime
+          write(iulog,*)'qflx_qrgwl            = ',qflx_qrgwl(indexc)*dtime
+          write(iulog,*)'qflx_drain            = ',qflx_drain(indexc)*dtime
+          write(iulog,*)'qflx_drain_perched    = ',qflx_drain_perched(indexc)*dtime
+          write(iulog,*)'qflx_flood            = ',qflx_floodc(indexc)*dtime
+          write(iulog,*)'qflx_ice_runoff_snwcp = ',qflx_ice_runoff_snwcp(indexc)*dtime
+          write(iulog,*)'qflx_ice_runoff_xs    = ',qflx_ice_runoff_xs(indexc)*dtime
+          write(iulog,*)'qflx_glcice_dyn_water_flux = ', qflx_glcice_dyn_water_flux(indexc)*dtime
+          write(iulog,*)'qflx_snwcp_discarded_ice = ',qflx_snwcp_discarded_ice(indexc)*dtime
+          write(iulog,*)'qflx_snwcp_discarded_liq = ',qflx_snwcp_discarded_liq(indexc)*dtime
+          write(iulog,*)'qflx_rootsoi_col(1:nlevsoil)  = ',qflx_rootsoi_col(indexc,:)*dtime
+          write(iulog,*)'clm model is stopping'
+
+			   
+			   
+			   
           if ((col%itype(indexc) == icol_roof .or. &
                col%itype(indexc) == icol_road_imperv .or. &
                col%itype(indexc) == icol_road_perv) .and. &
