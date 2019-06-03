@@ -132,6 +132,7 @@ contains
     real(r8)              :: scalez = 0.025_r8 ! Soil layer thickness discretization (m)
     real(r8)              :: thick_equal = 0.2
     real(r8) ,pointer     :: zbedrock_in(:)   ! read in - z_bedrock
+    real(r8) ,pointer     :: bedrock_depth_dummy(:) ! read in - z_bedrock
     real(r8) ,pointer     :: lakedepth_in(:)   ! read in - lakedepth 
     real(r8), allocatable :: zurb_wall(:,:)    ! wall (layer node depth)
     real(r8), allocatable :: zurb_roof(:,:)    ! roof (layer node depth)
@@ -478,6 +479,17 @@ contains
     !-----------------------------------------------
 
     allocate(zbedrock_in(bounds%begg:bounds%endg))
+    allocate(bedrock_depth_dummy(bounds%begg:bounds%endg))
+
+    !  FFElfelani Comment: Determine gridcell bedrock
+    call ncd_io(ncid=ncid, varname='zbedrock', flag='read', data=bedrock_depth_dummy, dim1name=grlnd, readvar=readvar)
+    if (.not. readvar) then
+       if (masterproc) then
+          call endrun( 'ERROR:: zbedrock not found on surface data set, and use_bedrock is true.'//errmsg(sourcefile, __LINE__) )
+       end if
+    end if
+
+
     if (use_bedrock) then
        call ncd_io(ncid=ncid, varname='zbedrock', flag='read', data=zbedrock_in, dim1name=grlnd, readvar=readvar)
        if (.not. readvar) then
@@ -518,8 +530,22 @@ contains
        col%nbedrock(c) = grc%nbedrock(g) 
     end do
 
-    deallocate(zbedrock_in)
+	
+    !  FFElfelani Comment: Determine gridcell bedrock
+    do g = bounds%begg,bounds%endg
+         grc%bedrock_depth(g) = bedrock_depth_dummy(g)
+    end do
 
+    !  Set column bedrock index
+    do c = begc, endc
+       g = col%gridcell(c)
+       col%bedrock_depth(c) = grc%bedrock_depth(g) 
+    end do
+	
+	
+	
+    deallocate(zbedrock_in)
+    deallocate(bedrock_depth_dummy)
     !-----------------------------------------------
     ! Set lake levels and layers (no interfaces)
     !-----------------------------------------------
