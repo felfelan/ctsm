@@ -307,33 +307,35 @@ contains
                ! ' global indexc= ',GetGlobalIndex(decomp_index=indexc, clmlevel=namec), &
                ' errh2o= ',errh2o(indexc)
 
-          g = col%gridcell(c)
+          g = col%gridcell(indexc)
           if (abs(errh2o(indexc)) > 1._r8) then 
-             write(iulog,*)'clm model is stopping - error is greater than 1 (mm)'
-             write(iulog,*)'gridcell              = ',g, grc%latdeg(g), grc%londeg(g)
+             write(iulog,*)'Ffelfelani Comment: clm model is stopping - error is greater than 1 (mm)'
+             write(iulog,*)'gridcell                   = ',g
+             write(iulog,*)'grc%latdeg(g)              = ',grc%latdeg(g)
+             write(iulog,*)'grc%londeg(g)              = ',grc%londeg(g)
              write(iulog,*)'soilhydrology_inst%zwt_col = ',soilhydrology_inst%zwt_col(indexc)
              write(iulog,*)'soilhydrology_inst%wa_col  = ',soilhydrology_inst%wa_col(indexc)
-             write(iulog,*)'nstep                 = ',nstep
-             write(iulog,*)'errh2o                = ',errh2o(indexc)
-             write(iulog,*)'forc_rain             = ',forc_rain_col(indexc)*dtime
-             write(iulog,*)'forc_snow             = ',forc_snow_col(indexc)*dtime
+             write(iulog,*)'nstep                      = ',nstep
+             write(iulog,*)'errh2o                     = ',errh2o(indexc)
+             write(iulog,*)'forc_rain                  = ',forc_rain_col(indexc)*dtime
+             write(iulog,*)'forc_snow                  = ',forc_snow_col(indexc)*dtime
              write(iulog,*)'total_plant_stored_h2o_col = ',total_plant_stored_h2o_col(indexc)
-             write(iulog,*)'endwb                 = ',endwb(indexc)
-             write(iulog,*)'begwb                 = ',begwb(indexc)
+             write(iulog,*)'endwb                      = ',endwb(indexc)
+             write(iulog,*)'begwb                      = ',begwb(indexc)
              
-             write(iulog,*)'qflx_evap_tot         = ',qflx_evap_tot(indexc)*dtime
-             write(iulog,*)'qflx_irrig            = ',qflx_irrig(indexc)*dtime
-             write(iulog,*)'qflx_surf             = ',qflx_surf(indexc)*dtime
-             write(iulog,*)'qflx_h2osfc_surf      = ',qflx_h2osfc_surf(indexc)*dtime
-             write(iulog,*)'qflx_qrgwl            = ',qflx_qrgwl(indexc)*dtime
-             write(iulog,*)'qflx_drain            = ',qflx_drain(indexc)*dtime
-             write(iulog,*)'qflx_drain_perched    = ',qflx_drain_perched(indexc)*dtime
-             write(iulog,*)'qflx_flood            = ',qflx_floodc(indexc)*dtime
-             write(iulog,*)'qflx_ice_runoff_snwcp = ',qflx_ice_runoff_snwcp(indexc)*dtime
-             write(iulog,*)'qflx_ice_runoff_xs    = ',qflx_ice_runoff_xs(indexc)*dtime
+             write(iulog,*)'qflx_evap_tot              = ',qflx_evap_tot(indexc)*dtime
+             write(iulog,*)'qflx_irrig                 = ',qflx_irrig(indexc)*dtime
+             write(iulog,*)'qflx_surf                  = ',qflx_surf(indexc)*dtime
+             write(iulog,*)'qflx_h2osfc_surf           = ',qflx_h2osfc_surf(indexc)*dtime
+             write(iulog,*)'qflx_qrgwl                 = ',qflx_qrgwl(indexc)*dtime
+             write(iulog,*)'qflx_drain                 = ',qflx_drain(indexc)*dtime
+             write(iulog,*)'qflx_drain_perched         = ',qflx_drain_perched(indexc)*dtime
+             write(iulog,*)'qflx_flood                 = ',qflx_floodc(indexc)*dtime
+             write(iulog,*)'qflx_ice_runoff_snwcp      = ',qflx_ice_runoff_snwcp(indexc)*dtime
+             write(iulog,*)'qflx_ice_runoff_xs         = ',qflx_ice_runoff_xs(indexc)*dtime
              write(iulog,*)'qflx_glcice_dyn_water_flux = ', qflx_glcice_dyn_water_flux(indexc)*dtime
-             write(iulog,*)'qflx_snwcp_discarded_ice = ',qflx_snwcp_discarded_ice(indexc)*dtime
-             write(iulog,*)'qflx_snwcp_discarded_liq = ',qflx_snwcp_discarded_liq(indexc)*dtime
+             write(iulog,*)'qflx_snwcp_discarded_ice   = ',qflx_snwcp_discarded_ice(indexc)*dtime
+             write(iulog,*)'qflx_snwcp_discarded_liq   = ',qflx_snwcp_discarded_liq(indexc)*dtime
              write(iulog,*)'clm model is stopping'
           end if
 
