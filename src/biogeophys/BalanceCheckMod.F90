@@ -309,7 +309,7 @@ contains
 
           g = col%gridcell(indexc)
           if (abs(errh2o(indexc)) > 1._r8) then 
-             write(iulog,*)'Ffelfelani Comment: clm model is stopping - error is greater than 1 (mm)'
+             write(iulog,*)'Ffelfelani Comment 1: clm model is stopping - error is greater than 1 (mm)'
              write(iulog,*)'gridcell                   = ',g
              write(iulog,*)'grc%latdeg(g)              = ',grc%latdeg(g)
              write(iulog,*)'grc%londeg(g)              = ',grc%londeg(g)
@@ -348,6 +348,12 @@ contains
                abs(errh2o(indexc)) > 1.e-5_r8 .and. (DAnstep > 2) ) then
 
              write(iulog,*)'clm urban model is stopping - error is greater than 1e-5 (mm)'
+             write(iulog,*)'Ffelfelani Comment 2: clm model is stopping - error is greater than 1 (mm)'
+             write(iulog,*)'gridcell                   = ',g
+             write(iulog,*)'grc%latdeg(g)              = ',grc%latdeg(g)
+             write(iulog,*)'grc%londeg(g)              = ',grc%londeg(g)
+             write(iulog,*)'soilhydrology_inst%zwt_col = ',soilhydrology_inst%zwt_col(indexc)
+             write(iulog,*)'soilhydrology_inst%wa_col  = ',soilhydrology_inst%wa_col(indexc)
              write(iulog,*)'nstep                 = ',nstep
              write(iulog,*)'errh2o                = ',errh2o(indexc)
              write(iulog,*)'forc_rain             = ',forc_rain_col(indexc)*dtime
@@ -377,6 +383,12 @@ contains
           else if (abs(errh2o(indexc)) > 1.e-5_r8 .and. (DAnstep > 2) ) then
 
              write(iulog,*)'clm model is stopping - error is greater than 1e-5 (mm)'
+             write(iulog,*)'Ffelfelani Comment 3: clm model is stopping - error is greater than 1 (mm)'
+             write(iulog,*)'gridcell                   = ',g
+             write(iulog,*)'grc%latdeg(g)              = ',grc%latdeg(g)
+             write(iulog,*)'grc%londeg(g)              = ',grc%londeg(g)
+             write(iulog,*)'soilhydrology_inst%zwt_col = ',soilhydrology_inst%zwt_col(indexc)
+             write(iulog,*)'soilhydrology_inst%wa_col  = ',soilhydrology_inst%wa_col(indexc)
              write(iulog,*)'nstep                 = ',nstep
              write(iulog,*)'errh2o                = ',errh2o(indexc)
              write(iulog,*)'forc_rain             = ',forc_rain_col(indexc)*dtime
@@ -475,6 +487,12 @@ contains
 
           if (abs(errh2osno(indexc)) > 1.e-5_r8 .and. (DAnstep > 2) ) then
              write(iulog,*)'clm model is stopping - error is greater than 1e-5 (mm)'
+             write(iulog,*)'Ffelfelani Comment 4: clm model is stopping - error is greater than 1 (mm)'
+             write(iulog,*)'gridcell                   = ',g
+             write(iulog,*)'grc%latdeg(g)              = ',grc%latdeg(g)
+             write(iulog,*)'grc%londeg(g)              = ',grc%londeg(g)
+             write(iulog,*)'soilhydrology_inst%zwt_col = ',soilhydrology_inst%zwt_col(indexc)
+             write(iulog,*)'soilhydrology_inst%wa_col  = ',soilhydrology_inst%wa_col(indexc)
              write(iulog,*)'nstep              = ',nstep
              write(iulog,*)'errh2osno          = ',errh2osno(indexc)
              write(iulog,*)'snl                = ',col%snl(indexc)
