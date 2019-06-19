@@ -251,7 +251,7 @@ contains
           ice_mass(c) = ice_mass(c) + h2osno(c)
        end if
 
-       !if (col%hydrologically_active(c)) then
+       if (col%hydrologically_active(c)) then
           ! It's important to exclude non-hydrologically-active points, because some of
           ! them have wa set, but seemingly incorrectly (set to 4000).
 
@@ -262,8 +262,8 @@ contains
           ! want to do it for CLM5 physics: there, wa stays fixed at 5000 for
           ! hydrologically-active columns, yet this apparently doesn't interact with the
           ! system, so we don't want to count that water mass in the total column water.
-       !   liquid_mass(c) = liquid_mass(c) + (wa(c) - aquifer_water_baseline) 
-       !end if
+          liquid_mass(c) = liquid_mass(c) + (wa(c) - aquifer_water_baseline) 
+       end if
 
        if (col%itype(c) == icol_roof .or. col%itype(c) == icol_sunwall &
             .or. col%itype(c) == icol_shadewall .or. col%itype(c) == icol_road_imperv) then
