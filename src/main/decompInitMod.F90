@@ -54,7 +54,7 @@ contains
     ! !ARGUMENTS:
     implicit none
     integer , intent(in) :: amask(:)
-    integer , intent(in) :: lni,lnj   ! domain global size
+    integer , intent(in) :: lni,lnj   ! domain global size FFelfelani: I think just the land cells
     !
     ! !LOCAL VARIABLES:
     integer :: lns                    ! global domain size
