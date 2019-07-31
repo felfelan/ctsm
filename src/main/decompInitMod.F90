@@ -50,6 +50,8 @@ contains
     !
     ! !USES:
     use clm_varctl, only : nsegspc
+    use spmdMod,    only : MPI_REAL8, MPI_SUM, mpicom
+    use domainMod , only : ldomain
     !
     ! !ARGUMENTS:
     implicit none
@@ -65,11 +67,19 @@ contains
     real(r8):: seglen                 ! average segment length
     real(r8):: rcid                   ! real value of cid
     integer :: cid,pid                ! indices
-    integer :: n,m,ng                 ! indices
+    integer :: n,m,ng,g,nc,gdc        ! indices
     integer :: ier                    ! error code
     integer :: beg,end,lsize,gsize    ! used for gsmap init
     integer, pointer :: gindex(:)     ! global index for gsmap init
     integer, pointer :: clumpcnt(:)   ! clump index counter
+	
+    real(r8), pointer :: G_lat_long(:)              ! latitude array for all grid cells
+    real(r8), pointer :: G_lon_long(:)              ! longitude array for all grid cells
+    real(r8), pointer :: G_lat_glob(:)
+    real(r8), pointer :: G_lon_glob(:)
+ 
+    type(bounds_type) :: bounds_clump
+    integer :: NUMclumps              ! number of clumps on this processor
     !------------------------------------------------------------------------------
 
     lns = lni * lnj
@@ -241,7 +251,9 @@ contains
     allocate(ldecomp%gdc2glo(numg), stat=ier)
 	allocate(ldecomp%ixy(numg), stat=ier)
     allocate(ldecomp%jxy(numg), stat=ier)
-	
+	! allocate(ldecomp%glat(numg), stat=ier)
+    ! allocate(ldecomp%glon(numg), stat=ier)
+	   
     if (ier /= 0) then
        write(iulog,*) 'decompInit_lnd(): allocation error1 for ldecomp, etc'
        call endrun(msg=errMsg(sourcefile, __LINE__))
@@ -255,6 +267,9 @@ contains
     ldecomp%gdc2glo(:) = 0
     ldecomp%ixy(:) = 0
     ldecomp%jxy(:) = 0
+    ! ldecomp%glat(:) = 0._r8
+    ! ldecomp%glon(:) = 0._r8
+
     ag = 0
 
     ! clumpcnt is the start gdc index of each clump
@@ -296,6 +311,7 @@ contains
     ! Set gsMap_lnd_gdc2glo (the global index here includes mask=0 or ocean points)
 
     call get_proc_bounds(beg, end)
+	
     allocate(gindex(beg:end))
     do n = beg,end
        gindex(n) = ldecomp%gdc2glo(n)
@@ -304,7 +320,63 @@ contains
     gsize = lni * lnj
     call mct_gsMap_init(gsMap_lnd_gdc2glo, gindex, mpicom, comp_id, lsize, gsize)
     deallocate(gindex)
+	
+    ! allocate(G_lat_long(numg))
+    ! allocate(G_lon_long(numg))	   
+    ! allocate(G_lat_glob(numg))
+    ! allocate(G_lon_glob(numg))	
 
+    ! G_lat_long(:)  = 0._r8
+    ! G_lon_long(:)  = 0._r8
+    ! G_lat_glob(:) = 1.e36_r8
+    ! G_lon_glob(:) = 1.e36_r8
+
+    ! write(*,*)'FFelfelani: numg, beg, end', numg, beg, end
+    !               for 1st processor:      473439,  1,  877    
+	 
+     ! it seems that initGridCells (line 213) and surfrd_get_grid (Line 140) are called 
+	 ! after this subroutine (decompInit_lnd) (line 122)
+	 ! in main/clm_initializeMod.F90, so I cannot use grc%latdeg(g) and ldomain%latc(g)
+
+     ! do g = beg,end  
+
+        ! G_lat_long(g) = grc%latdeg(g)
+        ! G_lon_long(g) = grc%londeg(g)
+	   
+     ! end do
+
+	! get the number of clumps per processor; each clump encompasses number of gridcells
+    ! NUMclumps = get_proc_clumps()
+
+    ! FIX(SPM,032414) add private vars for cohort and perhaps patch dimension
+    !$OMP PARALLEL DO PRIVATE (nc, bounds_clump, li, ci, pi, gdc)
+    ! do nc = 1, NUMclumps
+       ! call get_clump_bounds(nc, bounds_clump)
+
+       ! write(*,*)'FFelfelani: NUMclumps, begg, endg', NUMclumps, bounds_clump%begg,bounds_clump%endg	 
+       ! do gdc = bounds_clump%begg,bounds_clump%endg
+          ! G_lat_long(gdc) = ldomain%latc(gdc) 
+          ! G_lon_long(gdc) = ldomain%lonc(gdc)
+       ! end do
+    ! end do	 
+     ! call mpi_allreduce(G_lat_long, G_lat_glob, numg, &
+                          ! MPI_REAL8, MPI_SUM, mpicom, ier) 
+
+     ! call mpi_allreduce(G_lon_long, G_lon_glob, numg, &
+                          ! MPI_REAL8, MPI_SUM, mpicom, ier) 
+
+     ! do g = beg,end
+
+        ! ldecomp%glat(g) = G_lat_glob(g)
+        ! ldecomp%glon(g) = G_lon_glob(g)
+	   
+     ! end do  	
+
+    ! deallocate(G_lat_long)
+    ! deallocate(G_lon_long)
+    ! deallocate(G_lat_glob)
+    ! deallocate(G_lon_glob) 
+	   
     ! Diagnostic output
 
     if (masterproc) then
