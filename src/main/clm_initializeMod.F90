@@ -325,43 +325,43 @@ contains
               ldecomp%gtop(g_out)      = g_in
 
           else if (ldecomp%ixy(g_out) == ldecomp%ixy(g_in) + 1 .and.  &
-              ldecomp%jxy(g_out) == ldecomp%jxy(g_in) - 1) then
+                   ldecomp%jxy(g_out) == ldecomp%jxy(g_in) - 1) then
 					
               ldecomp%gneighbors(g_out) = ldecomp%gneighbors(g_out) + 1
               ldecomp%gtoplft(g_out)      = g_in
 
           else if (ldecomp%ixy(g_out) == ldecomp%ixy(g_in) - 1 .and.  &
-              ldecomp%jxy(g_out) == ldecomp%jxy(g_in) - 1) then
+                   ldecomp%jxy(g_out) == ldecomp%jxy(g_in) - 1) then
 					
               ldecomp%gneighbors(g_out) = ldecomp%gneighbors(g_out) + 1
               ldecomp%gtoprgt(g_out)      = g_in
 			  
           else if (ldecomp%ixy(g_out) == ldecomp%ixy(g_in)     .and.  &
-              ldecomp%jxy(g_out) == ldecomp%jxy(g_in) + 1) then
+                   ldecomp%jxy(g_out) == ldecomp%jxy(g_in) + 1) then
 					
               ldecomp%gneighbors(g_out) = ldecomp%gneighbors(g_out) + 1
               ldecomp%gbot(g_out)      = g_in
 
           else if (ldecomp%ixy(g_out) == ldecomp%ixy(g_in) + 1 .and.  &
-              ldecomp%jxy(g_out) == ldecomp%jxy(g_in) + 1) then
+                   ldecomp%jxy(g_out) == ldecomp%jxy(g_in) + 1) then
 					
               ldecomp%gneighbors(g_out) = ldecomp%gneighbors(g_out) + 1
               ldecomp%gbotlft(g_out)      = g_in
 
           else if (ldecomp%ixy(g_out) == ldecomp%ixy(g_in) - 1 .and.  &
-              ldecomp%jxy(g_out) == ldecomp%jxy(g_in) + 1) then
+                   ldecomp%jxy(g_out) == ldecomp%jxy(g_in) + 1) then
 					
               ldecomp%gneighbors(g_out) = ldecomp%gneighbors(g_out) + 1
               ldecomp%gbotrgt(g_out)      = g_in
 			  
           else if (ldecomp%ixy(g_out) == ldecomp%ixy(g_in) + 1 .and.  &
-              ldecomp%jxy(g_out) == ldecomp%jxy(g_in)) then
+                   ldecomp%jxy(g_out) == ldecomp%jxy(g_in)) then
 
               ldecomp%gneighbors(g_out) = ldecomp%gneighbors(g_out) + 1
               ldecomp%glft(g_out)      = g_in
 
           else if (ldecomp%ixy(g_out) == ldecomp%ixy(g_in) - 1 .and.  &
-              ldecomp%jxy(g_out) == ldecomp%jxy(g_in)) then
+                   ldecomp%jxy(g_out) == ldecomp%jxy(g_in)) then
 					
               ldecomp%gneighbors(g_out) = ldecomp%gneighbors(g_out) + 1
               ldecomp%grgt(g_out)      = g_in
