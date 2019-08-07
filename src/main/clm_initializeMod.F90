@@ -273,6 +273,11 @@ contains
     allocate(ldecomp%glft(ngrc), stat=ier)
     allocate(ldecomp%grgt(ngrc), stat=ier)
 
+    allocate(ldecomp%gtoplft(ngrc), stat=ier)
+    allocate(ldecomp%gtoprgt(ngrc), stat=ier)
+    allocate(ldecomp%gbotlft(ngrc), stat=ier)
+    allocate(ldecomp%gbotrgt(ngrc), stat=ier)
+	
     allocate(ldecomp%gneighbors(ngrc), stat=ier)
 	
     ldecomp%glat(:) = 0._r8
@@ -284,6 +289,11 @@ contains
     ldecomp%gbot(:) = 0
     ldecomp%glft(:) = 0
     ldecomp%grgt(:) = 0
+
+    ldecomp%gtoplft(:) = 0
+    ldecomp%gtoprgt(:) = 0
+    ldecomp%gbotlft(:) = 0
+    ldecomp%gbotrgt(:) = 0
 	
     if (masterproc) then
        	write(*,*)'FFelfelani: passing the lat/lon information among processors'
@@ -314,12 +324,36 @@ contains
               ldecomp%gneighbors(g_out) = ldecomp%gneighbors(g_out) + 1
               ldecomp%gtop(g_out)      = g_in
 
+          else if (ldecomp%ixy(g_out) == ldecomp%ixy(g_in) + 1 .and.  &
+              ldecomp%jxy(g_out) == ldecomp%jxy(g_in) - 1) then
+					
+              ldecomp%gneighbors(g_out) = ldecomp%gneighbors(g_out) + 1
+              ldecomp%gtoplft(g_out)      = g_in
+
+          else if (ldecomp%ixy(g_out) == ldecomp%ixy(g_in) - 1 .and.  &
+              ldecomp%jxy(g_out) == ldecomp%jxy(g_in) - 1) then
+					
+              ldecomp%gneighbors(g_out) = ldecomp%gneighbors(g_out) + 1
+              ldecomp%gtoprgt(g_out)      = g_in
+			  
           else if (ldecomp%ixy(g_out) == ldecomp%ixy(g_in)     .and.  &
               ldecomp%jxy(g_out) == ldecomp%jxy(g_in) + 1) then
 					
               ldecomp%gneighbors(g_out) = ldecomp%gneighbors(g_out) + 1
               ldecomp%gbot(g_out)      = g_in
 
+          else if (ldecomp%ixy(g_out) == ldecomp%ixy(g_in) + 1 .and.  &
+              ldecomp%jxy(g_out) == ldecomp%jxy(g_in) + 1) then
+					
+              ldecomp%gneighbors(g_out) = ldecomp%gneighbors(g_out) + 1
+              ldecomp%gbotlft(g_out)      = g_in
+
+          else if (ldecomp%ixy(g_out) == ldecomp%ixy(g_in) - 1 .and.  &
+              ldecomp%jxy(g_out) == ldecomp%jxy(g_in) + 1) then
+					
+              ldecomp%gneighbors(g_out) = ldecomp%gneighbors(g_out) + 1
+              ldecomp%gbotrgt(g_out)      = g_in
+			  
           else if (ldecomp%ixy(g_out) == ldecomp%ixy(g_in) + 1 .and.  &
               ldecomp%jxy(g_out) == ldecomp%jxy(g_in)) then
 
