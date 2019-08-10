@@ -210,6 +210,7 @@ contains
 
          if ((lun%itype(l)==istsoil .or. lun%itype(l)==istcrop) .and. col%active(c)) then
             qflx_runoff(c) = qflx_runoff(c) - (1._r8 - GW_ratio(c)) * qflx_irrig(c)
+            !if (qflx_irrig(c) /= 0._r8) write(*,*) 'qflx_irrig ', qflx_irrig(c)
          end if
          if (lun%urbpoi(l)) then
             qflx_runoff_u(c) = qflx_runoff(c)
