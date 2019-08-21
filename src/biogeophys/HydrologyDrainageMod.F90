@@ -209,7 +209,8 @@ contains
          qflx_runoff(c) = qflx_drain(c) + qflx_surf(c)  + qflx_h2osfc_surf(c) + qflx_qrgwl(c) + qflx_drain_perched(c)
 
          if ((lun%itype(l)==istsoil .or. lun%itype(l)==istcrop) .and. col%active(c)) then
-            qflx_runoff(c) = qflx_runoff(c) - (1._r8 - GW_ratio(c)) * qflx_irrig(c)
+            ! qflx_runoff(c) = qflx_runoff(c) - (1._r8 - GW_ratio(c)) * qflx_irrig(c)
+            qflx_runoff(c) = qflx_runoff(c) - qflx_irrig(c)
             !if (qflx_irrig(c) /= 0._r8) write(*,*) 'qflx_irrig ', qflx_irrig(c)
          end if
          if (lun%urbpoi(l)) then
