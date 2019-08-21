@@ -211,7 +211,7 @@ contains
       end if
 
       if (use_aquifer_layer()) then 
-         call WaterTable(bounds, num_hydrologyc, filter_hydrologyc, num_urbanc, filter_urbanc, &
+         call WaterTable(bounds, num_hydrologyc,num_nolakec, filter_hydrologyc, num_urbanc, filter_urbanc, &
               soilhydrology_inst, soilstate_inst, temperature_inst, waterstate_inst, waterflux_inst, irrigation_inst) 
       else
 
