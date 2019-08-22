@@ -103,7 +103,7 @@ contains
     type(canopystate_type)   , intent(inout) :: canopystate_inst
     class(soil_water_retention_curve_type), intent(in) :: soil_water_retention_curve
     class(topo_type)   , intent(in)    :: topo_inst
-    type(irrigation_type)    , intent(in)    :: irrigation_inst	
+    type(irrigation_type)    , intent(in)    :: irrigation_inst 
     !
     ! !LOCAL VARIABLES:
     integer  :: g,l,c,j,fc                    ! indices
@@ -211,7 +211,7 @@ contains
       end if
 
       if (use_aquifer_layer()) then 
-         call WaterTable(bounds, num_hydrologyc,num_nolakec, filter_hydrologyc,filter_nolakec, num_urbanc, filter_urbanc, &
+         call WaterTable(bounds, num_hydrologyc, filter_hydrologyc, num_urbanc, filter_urbanc, &
               soilhydrology_inst, soilstate_inst, temperature_inst, waterstate_inst, waterflux_inst, irrigation_inst) 
       else
 
