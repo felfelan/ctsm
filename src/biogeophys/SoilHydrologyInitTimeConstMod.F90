@@ -86,6 +86,8 @@ contains
 
     soilhydrology_inst%wa_col(bounds%begc:bounds%endc)  = aquifer_water_baseline
     soilhydrology_inst%zwt_col(bounds%begc:bounds%endc) = 0._r8
+    soilhydrology_inst%Qgw_lateral_col(bounds%begc:bounds%endc) = 0._r8
+    soilhydrology_inst%AqTransmiss_col(bounds%begc:bounds%endc) = 0._r8
 
     allocate(wtd_Fan(bounds%begg:bounds%endg))
     call getfil (fsurdat, locfn, 0)
