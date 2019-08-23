@@ -28,6 +28,7 @@ Module SoilHydrologyType
      real(r8), pointer :: wa_col            (:)     ! col water in the unconfined aquifer (mm)
      real(r8), pointer :: Qgw_lateral_col   (:)     ! col Groundwater lateral flow (mm)
      real(r8), pointer :: AqTransmiss_col   (:)     ! col Aquifer Transmissivity (mm)
+     real(r8), pointer :: Pump_wa_col       (:)     ! col pumped water (mm)
      real(r8), pointer :: qcharge_col       (:)     ! col aquifer recharge rate (mm/s) 
      real(r8), pointer :: fracice_col       (:,:)   ! col fractional impermeability (-)
      real(r8), pointer :: icefrac_col       (:,:)   ! col fraction of ice       
@@ -121,6 +122,7 @@ contains
     allocate(this%wa_col            (begc:endc))                 ; this%wa_col            (:)     = nan
     allocate(this%Qgw_lateral_col   (begc:endc))                 ; this%Qgw_lateral_col   (:)     = nan
     allocate(this%AqTransmiss_col   (begc:endc))                 ; this%AqTransmiss_col   (:)     = nan
+    allocate(this%Pump_wa_col       (begc:endc))                 ; this%Pump_wa_col       (:)     = nan
     allocate(this%qcharge_col       (begc:endc))                 ; this%qcharge_col       (:)     = nan
     allocate(this%fracice_col       (begc:endc,nlevgrnd))        ; this%fracice_col       (:,:)   = nan
     allocate(this%icefrac_col       (begc:endc,nlevgrnd))        ; this%icefrac_col       (:,:)   = nan
@@ -181,6 +183,11 @@ contains
     call hist_addfld1d (fname='Aq_Transmissivity',  units='mm2/s',  &
          avgflag='A', long_name='Transmissivity of the unconfined aquifer (vegetated landunits only)', &
          ptr_col=this%AqTransmiss_col, l2g_scale_type='veg')
+
+    this%Pump_wa_col(begc:endc) = spval
+    call hist_addfld1d (fname='Pumped_Wa',  units='mm2/s',  &
+         avgflag='A', long_name='Pumped Water from the unconfined aquifer (vegetated landunits only)', &
+         ptr_col=this%Pump_wa_col, l2g_scale_type='veg')
 
     this%qcharge_col(begc:endc) = spval
     call hist_addfld1d (fname='QCHARGE',  units='mm/s',  &
@@ -283,6 +290,11 @@ contains
          dim1name='column', &
          long_name='Transmissivity of the unconfined aquifer', units='mm2/s', &
          interpinic_flag='interp', readvar=readvar, data=this%AqTransmiss_col)
+
+    call restartvar(ncid=ncid, flag=flag, varname='Pumped_Wa', xtype=ncd_double,  & 
+         dim1name='column', &
+         long_name='Pumped water from the unconfined aquifer', units='mm', &
+         interpinic_flag='interp', readvar=readvar, data=this%Pump_wa_col)
 
     call restartvar(ncid=ncid, flag=flag, varname='ZWT', xtype=ncd_double,  & 
          dim1name='column', &
