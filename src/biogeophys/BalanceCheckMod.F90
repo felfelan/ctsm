@@ -267,6 +267,7 @@ contains
           if (col%active(c)) then
 
              errh2o(c) = endwb(c) - begwb(c) &
+                  - soilhydrology_inst%Qgw_lateral_col(c) &
                   - (forc_rain_col(c)        &
                   + forc_snow_col(c)         &
                   + qflx_floodc(c)           &
@@ -318,6 +319,7 @@ contains
              write(iulog,*)'soilhydrology_inst%wa_col  = ',soilhydrology_inst%wa_col(indexc)
              write(iulog,*)'nstep                      = ',nstep
              write(iulog,*)'errh2o                     = ',errh2o(indexc)
+             write(iulog,*)'lateralflow                = ',soilhydrology_inst%Qgw_lateral_col(indexc)			 
              write(iulog,*)'forc_rain                  = ',forc_rain_col(indexc)*dtime
              write(iulog,*)'forc_snow                  = ',forc_snow_col(indexc)*dtime
              write(iulog,*)'total_plant_stored_h2o_col = ',total_plant_stored_h2o_col(indexc)
@@ -357,6 +359,7 @@ contains
              write(iulog,*)'soilhydrology_inst%wa_col  = ',soilhydrology_inst%wa_col(indexc)
              write(iulog,*)'nstep                 = ',nstep
              write(iulog,*)'errh2o                = ',errh2o(indexc)
+             write(iulog,*)'lateralflow           = ',soilhydrology_inst%Qgw_lateral_col(indexc)
              write(iulog,*)'forc_rain             = ',forc_rain_col(indexc)*dtime
              write(iulog,*)'forc_snow             = ',forc_snow_col(indexc)*dtime
              write(iulog,*)'endwb                 = ',endwb(indexc)
@@ -392,6 +395,7 @@ contains
              write(iulog,*)'soilhydrology_inst%wa_col  = ',soilhydrology_inst%wa_col(indexc)
              write(iulog,*)'nstep                 = ',nstep
              write(iulog,*)'errh2o                = ',errh2o(indexc)
+             write(iulog,*)'lateralflow           = ',soilhydrology_inst%Qgw_lateral_col(indexc)
              write(iulog,*)'forc_rain             = ',forc_rain_col(indexc)*dtime
              write(iulog,*)'forc_snow             = ',forc_snow_col(indexc)*dtime
              write(iulog,*)'total_plant_stored_h2o_col = ',total_plant_stored_h2o_col(indexc)
