@@ -88,6 +88,7 @@ contains
     soilhydrology_inst%zwt_col(bounds%begc:bounds%endc) = 0._r8
     soilhydrology_inst%Qgw_lateral_col(bounds%begc:bounds%endc) = 0._r8
     soilhydrology_inst%AqTransmiss_col(bounds%begc:bounds%endc) = 0._r8
+    soilhydrology_inst%Pump_wa_col(bounds%begc:bounds%endc) = 0._r8
 
     allocate(wtd_Fan(bounds%begg:bounds%endg))
     call getfil (fsurdat, locfn, 0)
