@@ -254,6 +254,9 @@ attributes from the config_cache.xml file (with keys converted to upper-case).
 <groundwater_scheme phys="clm4_5">0</groundwater_scheme>
 <groundwater_scheme phys="clm5_0">0</groundwater_scheme>
 
+<use_pumping phys="clm4_5">.false.</use_pumping>
+<use_pumping phys="clm5_0">.false.</use_pumping>
+
 <dtmin>60.</dtmin>      
 <verySmall>1.e-8</verySmall>
 <xTolerUpper>1.e-1</xTolerUpper> 
