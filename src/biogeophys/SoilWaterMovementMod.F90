@@ -56,7 +56,7 @@ module SoilWaterMovementMod
 
   ! FFelfelani Comment: Groundwater Scheme
   integer, parameter :: gw_default  = 0
-  integer, parameter :: gw_Theim_FanTransmiss  = 1
+  integer, parameter :: gw_FanLat_Pump  = 1
   integer, parameter :: gw_Theim_GleesonTransmiss  = 2
   integer, parameter :: gw_Fan  = 3
   
@@ -99,7 +99,7 @@ contains
     use fileutils       , only : getavu, relavu
     use spmdMod         , only : mpicom, masterproc
     use shr_mpi_mod     , only : shr_mpi_bcast
-    use clm_varctl      , only : iulog, use_bedrock, groundwater_scheme
+    use clm_varctl      , only : iulog, use_bedrock, groundwater_scheme, use_pumping
     use controlMod      , only : NLFilename
     use clm_nlUtilsMod  , only : find_nlgroup_name
 
@@ -124,7 +124,8 @@ contains
          expensive,                    &
          inexpensive,                  &
          flux_calculation,             &
-         groundwater_scheme
+         groundwater_scheme,           &
+         use_pumping
 
     ! Default values for namelist
 
@@ -140,6 +141,7 @@ contains
     inexpensive=1
     flux_calculation=inexpensive  
     groundwater_scheme=gw_default
+    use_pumping=.false.
 	
     ! Read soilwater_movement namelist
     if (masterproc) then
@@ -167,9 +169,9 @@ contains
        endif
 
 ! FFelfelani Comment: test for namelist consistency
-       if((groundwater_scheme == gw_Theim_FanTransmiss) .and. &
+       if((groundwater_scheme == gw_FanLat_Pump) .and. &
             (lower_boundary_condition < 3)) then
-          call endrun(subname // ':: ERROR inconsistent groundwater_scheme namelist: gw_Theim_FanTransmiss must use bc_aquifer/bc_waterTable')
+          call endrun(subname // ':: ERROR inconsistent groundwater_scheme namelist: gw_FanLat_Pump must use bc_aquifer/bc_waterTable')
        endif
    
 
@@ -179,6 +181,7 @@ contains
     call shr_mpi_bcast(upper_boundary_condition, mpicom)
     call shr_mpi_bcast(lower_boundary_condition, mpicom)
     call shr_mpi_bcast(groundwater_scheme, mpicom)
+    call shr_mpi_bcast(use_pumping, mpicom) 
     call shr_mpi_bcast(dtmin, mpicom)
     call shr_mpi_bcast(verySmall, mpicom)
     call shr_mpi_bcast(xTolerUpper, mpicom)
@@ -196,6 +199,7 @@ contains
        write(iulog,*) '  upper_boundary_condition   = ',upper_boundary_condition
        write(iulog,*) '  lower_boundary_condition   = ',lower_boundary_condition
        write(iulog,*) '  groundwater_scheme         = ',groundwater_scheme
+       write(iulog,*) '  use_pumping                = ',use_pumping
 	   
        write(iulog,*) '  use_bedrock                = ',use_bedrock
        write(iulog,*) '  dtmin                      = ',dtmin
