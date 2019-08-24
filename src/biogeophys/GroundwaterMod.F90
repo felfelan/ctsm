@@ -184,9 +184,9 @@ contains
 
        call get_curr_date (year, month, day, secs)
        ! if (masterproc) then
-       if (iam == 200) then
-          write(*,*) 'year, month, day, secs, dtime, ', year, month, day, secs, dtime
-       end if    		  
+       ! if (iam == 200) then
+          ! write(*,*) 'year, month, day, secs, dtime, ', year, month, day, secs, dtime
+       ! end if    		  
  
        ! Initialize for the mpi_allreduce located between the out and 
        ! in loops
