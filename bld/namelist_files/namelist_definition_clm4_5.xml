@@ -366,6 +366,11 @@ groundwater_scheme = 3 : gw_Fan: Fan scheme for lateral flow and transmissivity
 TODO(bja, 2019-05) these should be strings so they have meaningful names instead of ints. 
 </entry>
 
+<entry id="use_pumping" type="logical" category="clm_physics"
+       group="soilwater_movement_inparm" valid_values="" >
+Activate/deactivate pumping scheme.
+</entry>
+
 <entry id="dtmin" type="real" category="clm_physics"
        group="soilwater_movement_inparm" valid_values="" >
 minimum time step length (seconds) for adaptive time stepping in richards equation
