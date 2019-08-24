@@ -211,8 +211,6 @@ contains
          if ((lun%itype(l)==istsoil .or. lun%itype(l)==istcrop) .and. col%active(c)) then
             if (use_pumping == .true.) then
                qflx_runoff(c) = qflx_runoff(c) - (1._r8 - GW_ratio(c)) * qflx_irrig(c)
-               ! qflx_runoff(c) = qflx_runoff(c) - qflx_irrig(c)
-               ! if (qflx_irrig(c) /= 0._r8) write(*,*) 'qflx_irrig ', qflx_irrig(c)
             else
                qflx_runoff(c) = qflx_runoff(c) - qflx_irrig(c)
             end if
