@@ -42,7 +42,7 @@ module SoilHydrologyMod
 
   ! FFelfelani Comment: Groundwater Scheme
   integer, parameter :: gw_default  = 0
-  integer, parameter :: gw_Theim_FanTransmiss  = 1
+  integer, parameter :: gw_FanLat_Pump  = 1
   integer, parameter :: gw_Theim_GleesonTransmiss  = 2
   integer, parameter :: gw_Fan  = 3 
   
@@ -574,24 +574,28 @@ contains
    end subroutine Infiltration
 
    !-----------------------------------------------------------------------
-   subroutine WaterTable(bounds, num_hydrologyc, filter_hydrologyc, num_urbanc, filter_urbanc, &
+   subroutine WaterTable(bounds, num_hydrologyc, filter_hydrologyc,num_urbanc, filter_urbanc, &
         soilhydrology_inst, soilstate_inst, temperature_inst, waterstate_inst, waterflux_inst, irrigation_inst) 
      !
      ! !DESCRIPTION:
      ! Calculate watertable, considering aquifer recharge but no drainage.
      !
      ! !USES:
-     use clm_time_manager , only : get_step_size, get_prev_date
+     use clm_time_manager , only : get_step_size, get_prev_date, get_curr_date
      use clm_varcon       , only : pondmx, tfrz, watmin,denice,denh2o
-     !use clm_varctl       , only : iulog
+     use clm_varctl       , only : iulog
      !use shr_sys_mod      , only : shr_sys_flush
      use clm_varpar       , only : nlevsoi
      use column_varcon    , only : icol_roof, icol_road_imperv
      use decompMod        , only : get_proc_bounds
      use GridcellType     , only : grc   
-     use GroundwaterMod   , only : UpdateGWTheim
+     use GroundwaterMod   , only : groundwater_type
      use abortutils       , only : endrun
+     use spmdMod        , only : masterproc
      !
+
+     type(groundwater_type)                   :: groundwater_inst
+
      ! !ARGUMENTS:
      type(bounds_type)        , intent(in)    :: bounds  
      integer                  , intent(in)    :: num_hydrologyc       ! number of column soil points in column filter
@@ -642,7 +646,6 @@ contains
      real(r8) :: q_perch
      real(r8) :: q_perch_max
      real(r8) :: dflag=0._r8
-
 !     real(r8), pointer :: londeg(:)      ! longitude (degrees) (for calculation of local time)
 !     real(r8), pointer :: latdeg(:)      ! latitude (degrees) (for calculation of local time)
      integer  :: g                               !indices	 
@@ -651,6 +654,9 @@ contains
      integer  :: day                      ! day at start of time step
      integer  :: time                     ! time at start of time step (seconds after 0Z)
 
+     integer :: year       ! year (0, ...) for nstep
+     integer :: month      ! month (1, ..., 12) for nstep
+     integer :: secs       ! seconds into current date for nstep
      character(*), parameter    :: subname = "('WaterTable')"
      !-----------------------------------------------------------------------
 
@@ -712,7 +718,7 @@ contains
        ! Get time step
 
        dtime = get_step_size()
-
+       call get_curr_date (year, month, day, secs)
        ! Convert layer thicknesses from m to mm
 
        do j = 1,nlevsoi
@@ -732,112 +738,110 @@ contains
 
 
        !============================== QCHARGE =========================================
-       !======= FFelfelani: update zwt based on different GW schemes ===================
 
+       ! The layer index of the first unsaturated layer, i.e., the layer right above
+       ! the water table
+
+       do fc = 1, num_hydrologyc
+          c = filter_hydrologyc(fc)
+          jwt(c) = nlevsoi
+          ! allow jwt to equal zero when zwt is in top layer
+          do j = 1,nlevsoi
+             if(zwt(c) <= zi(c,j)) then
+                jwt(c) = j-1 
+                exit
+             end if
+          enddo
+       end do
+
+
+		  
+       ! Water table changes due to qcharge
+       do fc = 1, num_hydrologyc
+          c = filter_hydrologyc(fc)
+
+          ! use analytical expression for aquifer specific yield
+          rous = watsat(c,nlevsoi) &
+               * ( 1. - (1.+1.e3*zwt(c)/sucsat(c,nlevsoi))**(-1./bsw(c,nlevsoi)))
+          rous=max(rous,0.02_r8)
+
+          !--  water table is below the soil column  --------------------------------------
+          if(jwt(c) == nlevsoi) then             
+             wa(c)  = wa(c) + qcharge(c)  * dtime
+             zwt(c) = zwt(c) - (qcharge(c)  * dtime)/1000._r8/rous
+          else                                
+             !-- water table within soil layers 1-9  -------------------------------------
+             ! try to raise water table to account for qcharge
+             qcharge_tot = qcharge(c) * dtime
+             if(qcharge_tot > 0.) then !rising water table
+                do j = jwt(c)+1, 1,-1
+                   ! use analytical expression for specific yield
+                   s_y = watsat(c,j) &
+                        * ( 1. -  (1.+1.e3*zwt(c)/sucsat(c,j))**(-1./bsw(c,j)))
+                   s_y=max(s_y,0.02_r8)
+
+                   qcharge_layer=min(qcharge_tot,(s_y*(zwt(c) - zi(c,j-1))*1.e3))
+                   qcharge_layer=max(qcharge_layer,0._r8)
+
+                   if(s_y > 0._r8) zwt(c) = zwt(c) - qcharge_layer/s_y/1000._r8
+
+                   qcharge_tot = qcharge_tot - qcharge_layer
+                   if (qcharge_tot <= 0.) exit
+                enddo
+             else ! deepening water table (negative qcharge)
+                do j = jwt(c)+1, nlevsoi
+                   ! use analytical expression for specific yield
+                   s_y = watsat(c,j) &
+                        * ( 1. -  (1.+1.e3*zwt(c)/sucsat(c,j))**(-1./bsw(c,j)))
+                   s_y=max(s_y,0.02_r8)
+
+                   qcharge_layer=max(qcharge_tot,-(s_y*(zi(c,j) - zwt(c))*1.e3))
+                   qcharge_layer=min(qcharge_layer,0._r8)
+                   qcharge_tot = qcharge_tot - qcharge_layer
+                   if (qcharge_tot >= 0.) then 
+                      zwt(c) = zwt(c) - qcharge_layer/s_y/1000._r8
+                      exit
+                   else
+                      zwt(c) = zi(c,j)
+                   endif
+
+                enddo
+                if (qcharge_tot > 0.) zwt(c) = zwt(c) - qcharge_tot/1000._r8/rous
+             endif
+
+             !-- recompute jwt for following calculations  ---------------------------------
+             ! allow jwt to equal zero when zwt is in top layer
+             jwt(c) = nlevsoi
+             do j = 1,nlevsoi
+                if(zwt(c) <= zi(c,j)) then
+                   jwt(c) = j-1
+                   exit 
+                end if
+             enddo
+          endif
+       enddo
+       !======= FFelfelani: update zwt based on different GW schemes ===================	   
        ! compute drainage from the bottom of the soil column
        select case(groundwater_scheme)
 
           ! Groundwater scheme: Default
           case(gw_default)
-
-
-       ! The layer index of the first unsaturated layer, i.e., the layer right above
-       ! the water table
-
-            do fc = 1, num_hydrologyc
-               c = filter_hydrologyc(fc)
-               jwt(c) = nlevsoi
-               ! allow jwt to equal zero when zwt is in top layer
-               do j = 1,nlevsoi
-                  if(zwt(c) <= zi(c,j)) then
-                     jwt(c) = j-1 
-                     exit
-                  end if
-               enddo
-            end do
-
-
-		  
-            ! Water table changes due to qcharge
-            do fc = 1, num_hydrologyc
-               c = filter_hydrologyc(fc)
-
-               ! use analytical expression for aquifer specific yield
-               rous = watsat(c,nlevsoi) &
-                    * ( 1. - (1.+1.e3*zwt(c)/sucsat(c,nlevsoi))**(-1./bsw(c,nlevsoi)))
-               rous=max(rous,0.02_r8)
-
-               !--  water table is below the soil column  --------------------------------------
-               if(jwt(c) == nlevsoi) then             
-                  wa(c)  = wa(c) + qcharge(c)  * dtime
-                  zwt(c) = zwt(c) - (qcharge(c)  * dtime)/1000._r8/rous
-               else                                
-                  !-- water table within soil layers 1-9  -------------------------------------
-                  ! try to raise water table to account for qcharge
-                  qcharge_tot = qcharge(c) * dtime
-                  if(qcharge_tot > 0.) then !rising water table
-                     do j = jwt(c)+1, 1,-1
-                        ! use analytical expression for specific yield
-                        s_y = watsat(c,j) &
-                             * ( 1. -  (1.+1.e3*zwt(c)/sucsat(c,j))**(-1./bsw(c,j)))
-                        s_y=max(s_y,0.02_r8)
-
-                        qcharge_layer=min(qcharge_tot,(s_y*(zwt(c) - zi(c,j-1))*1.e3))
-                        qcharge_layer=max(qcharge_layer,0._r8)
-
-                        if(s_y > 0._r8) zwt(c) = zwt(c) - qcharge_layer/s_y/1000._r8
-
-                        qcharge_tot = qcharge_tot - qcharge_layer
-                        if (qcharge_tot <= 0.) exit
-                     enddo
-                  else ! deepening water table (negative qcharge)
-                     do j = jwt(c)+1, nlevsoi
-                        ! use analytical expression for specific yield
-                        s_y = watsat(c,j) &
-                             * ( 1. -  (1.+1.e3*zwt(c)/sucsat(c,j))**(-1./bsw(c,j)))
-                        s_y=max(s_y,0.02_r8)
-
-                        qcharge_layer=max(qcharge_tot,-(s_y*(zi(c,j) - zwt(c))*1.e3))
-                        qcharge_layer=min(qcharge_layer,0._r8)
-                        qcharge_tot = qcharge_tot - qcharge_layer
-                        if (qcharge_tot >= 0.) then 
-                           zwt(c) = zwt(c) - qcharge_layer/s_y/1000._r8
-                           exit
-                        else
-                           zwt(c) = zi(c,j)
-                        endif
-
-                     enddo
-                     if (qcharge_tot > 0.) zwt(c) = zwt(c) - qcharge_tot/1000._r8/rous
-                  endif
-
-                  !-- recompute jwt for following calculations  ---------------------------------
-                  ! allow jwt to equal zero when zwt is in top layer
-                  jwt(c) = nlevsoi
-                  do j = 1,nlevsoi
-                     if(zwt(c) <= zi(c,j)) then
-                        jwt(c) = j-1
-                        exit 
-                     end if
-                  enddo
-               endif
-            enddo
-
+            if (masterproc .and. secs == 0) write(iulog,*) 'This is gw_default groundwater scheme'
 
           ! Groundwater scheme: Theim Theory + Ying Fan Transmissivity 
-          case(gw_Theim_FanTransmiss)
-		  
-            call UpdateGWTheim(bounds, num_hydrologyc, filter_hydrologyc, &
-                 soilhydrology_inst, soilstate_inst,irrigation_inst)
+          case(gw_FanLat_Pump)
+            if (masterproc .and. secs == 0) write(iulog,*) 'This is Theim groundwater  scheme  '  
+            call groundwater_inst%UpdateGWFanLatPump(bounds, num_hydrologyc, filter_hydrologyc,&
+                 soilhydrology_inst, soilstate_inst,waterstate_inst,irrigation_inst)
 
 				 
           ! Groundwater scheme: Theim Theory + Gleeson Transmissivity 
           case(gw_Theim_GleesonTransmiss)
-            write(*,*) 'This is gw_Theim_GleesonTransmiss groundwater scheme'
+            if (masterproc .and. secs == 0) write(iulog,*) 'This is gw_Theim_GleesonTransmiss groundwater scheme'
 
           ! Groundwater scheme: Ying Fan
           case(gw_Fan)
-            write(*,*) 'This is gw_Fan groundwater scheme'
+            if (masterproc .and. secs == 0) write(iulog,*) 'This is gw_Fan groundwater scheme'
 
           case default
              call endrun(subname // ':: the groundwater scheme must be specified !')
