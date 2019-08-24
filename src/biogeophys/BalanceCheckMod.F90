@@ -265,7 +265,7 @@ contains
 
           ! add qflx_drain_perched and qflx_flood
           if (col%active(c)) then
-
+             ! there is already dtime multiplied in Pump_wa_col, so should be divided!
              errh2o(c) = endwb(c) - begwb(c) &
                   - soilhydrology_inst%Qgw_lateral_col(c) &
                   - (forc_rain_col(c)        &
