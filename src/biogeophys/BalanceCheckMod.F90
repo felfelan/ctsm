@@ -272,7 +272,7 @@ contains
                   + forc_snow_col(c)         &
                   + qflx_floodc(c)           &
                   + qflx_irrig(c)            &
-                  - col%GW_ratio(c) * qflx_irrig(c)&
+                  - soilhydrology_inst%Pump_wa_col(c)/dtime&
                   + qflx_glcice_dyn_water_flux(c) &
                   - qflx_evap_tot(c)         &
                   - qflx_surf(c)             &
