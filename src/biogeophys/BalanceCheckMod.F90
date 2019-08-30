@@ -267,12 +267,12 @@ contains
           if (col%active(c)) then
              ! there is already dtime multiplied in Pump_wa_col, so should be divided!
              errh2o(c) = endwb(c) - begwb(c) &
-                  - soilhydrology_inst%Qgw_lateral_col(c) &
                   - (forc_rain_col(c)        &
                   + forc_snow_col(c)         &
                   + qflx_floodc(c)           &
                   + qflx_irrig(c)            &
                   - soilhydrology_inst%Pump_wa_col(c)/dtime&
+                  + soilhydrology_inst%Qgw_lateral_col(c) &
                   + qflx_glcice_dyn_water_flux(c) &
                   - qflx_evap_tot(c)         &
                   - qflx_surf(c)             &
@@ -319,7 +319,7 @@ contains
              write(iulog,*)'soilhydrology_inst%wa_col  = ',soilhydrology_inst%wa_col(indexc)
              write(iulog,*)'nstep                      = ',nstep
              write(iulog,*)'errh2o                     = ',errh2o(indexc)
-             write(iulog,*)'lateralflow                = ',soilhydrology_inst%Qgw_lateral_col(indexc)
+             write(iulog,*)'lateralflow                = ',soilhydrology_inst%Qgw_lateral_col(indexc)*dtime
              write(iulog,*)'Pump_wa_col                = ',soilhydrology_inst%Pump_wa_col(indexc)
              write(iulog,*)'forc_rain                  = ',forc_rain_col(indexc)*dtime
              write(iulog,*)'forc_snow                  = ',forc_snow_col(indexc)*dtime
@@ -360,7 +360,7 @@ contains
              write(iulog,*)'soilhydrology_inst%wa_col  = ',soilhydrology_inst%wa_col(indexc)
              write(iulog,*)'nstep                 = ',nstep
              write(iulog,*)'errh2o                = ',errh2o(indexc)
-             write(iulog,*)'lateralflow           = ',soilhydrology_inst%Qgw_lateral_col(indexc)
+             write(iulog,*)'lateralflow           = ',soilhydrology_inst%Qgw_lateral_col(indexc)*dtime
              write(iulog,*)'Pump_wa_col           = ',soilhydrology_inst%Pump_wa_col(indexc)
              write(iulog,*)'forc_rain             = ',forc_rain_col(indexc)*dtime
              write(iulog,*)'forc_snow             = ',forc_snow_col(indexc)*dtime
@@ -397,7 +397,7 @@ contains
              write(iulog,*)'soilhydrology_inst%wa_col  = ',soilhydrology_inst%wa_col(indexc)
              write(iulog,*)'nstep                 = ',nstep
              write(iulog,*)'errh2o                = ',errh2o(indexc)
-             write(iulog,*)'lateralflow           = ',soilhydrology_inst%Qgw_lateral_col(indexc)
+             write(iulog,*)'lateralflow           = ',soilhydrology_inst%Qgw_lateral_col(indexc)*dtime
              write(iulog,*)'Pump_wa_col           = ',soilhydrology_inst%Pump_wa_col(indexc)
              write(iulog,*)'forc_rain             = ',forc_rain_col(indexc)*dtime
              write(iulog,*)'forc_snow             = ',forc_snow_col(indexc)*dtime
