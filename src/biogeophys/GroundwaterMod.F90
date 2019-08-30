@@ -95,7 +95,7 @@ contains
     use decompMod       , only : ldecomp, get_proc_global
     use shr_const_mod   , only : SHR_CONST_PI
     use GridcellType    , only : grc
-    use clm_time_manager, only : get_step_size, get_curr_date
+    use clm_time_manager, only : get_step_size, get_curr_date, get_nstep
     use landunit_varcon , only : istwet, istsoil, istice_mec, istcrop
 
     ! !ARGUMENTS:
@@ -112,7 +112,7 @@ contains
  
     character(len=32) :: subname = 'GroundwaterMod' ! subroutine name 
     real(r8), pointer :: zwt_long(:)        , zwt_glob(:)            ! GW_out array for all grid cells; complete grid cell array of GW_out
-    real(r8), pointer :: Qn_glob(:)                                  ! Lateral flow in (mm3)
+    real(r8), pointer :: Qn_glob(:)                                  ! Lateral flow in (mm3/sec)
     real(r8), pointer :: g_totCweight(:)
     real(r8), pointer :: g_watsat_long(:)
     real(r8), pointer :: g_sucst_long(:)
@@ -150,6 +150,7 @@ contains
     integer :: month      ! month (1, ..., 12) for nstep
     integer :: day        ! day of month (1, ..., 31) for nstep
     integer :: secs       ! seconds into current date for nstep
+    integer :: nstep
 
     ! Conversion factors
 
@@ -173,7 +174,7 @@ contains
           zwt                =>    soilhydrology_inst%zwt_col            , & ! Input and Output: [real(r8) (:)   ]  water table depth (m)                                        
           wa                 =>    soilhydrology_inst%wa_col             , & ! Output: [real(r8) (:)   ]  water in the unconfined aquifer (mm)              
           qcharge            =>    soilhydrology_inst%qcharge_col        , & ! Input:  [real(r8) (:)   ]  aquifer recharge rate (mm/s)
-          Qgw_lateral        =>    soilhydrology_inst%Qgw_lateral_col    , & ! Output: [real(r8) (:)   ]  GW lateral flow (mm)
+          Qgw_lateral        =>    soilhydrology_inst%Qgw_lateral_col    , & ! Output: [real(r8) (:)   ]  GW lateral flow (mm/s)
           AqTransmiss        =>    soilhydrology_inst%AqTransmiss_col    , & ! Output: [real(r8) (:)   ]  Aquifer Transmissivity(mm2/s)
           Pump_wa            =>    soilhydrology_inst%Pump_wa_col        , & ! Output: [real(r8) (:)   ]  Pumped Water from the aquifer(mm)
 
@@ -181,12 +182,12 @@ contains
           )
        !-----------------------------------------------
        dtime = get_step_size()
-
+       nstep = get_nstep()
        call get_curr_date (year, month, day, secs)
        ! if (masterproc) then
-       ! if (iam == 200) then
-          ! write(*,*) 'year, month, day, secs, dtime, ', year, month, day, secs, dtime
-       ! end if    		  
+       !if (iam == 200) then
+       !   write(*,*) 'year, month, day, secs, dtime, ', year, month, day, secs, dtime
+       !end if    		  
  
        ! Initialize for the mpi_allreduce located between the out and 
        ! in loops
@@ -255,20 +256,22 @@ contains
        if (use_pumping == .true.) then
           do fc = 1, num_hydrologyc
              c = filter_hydrologyc(fc)
+             g = col%gridcell(c)
                  !!! use analytical expression for aquifer specific yield
                  rous = watsat(c,nlevsoi) &
                       * ( 1. - (1.+1.e3*zwt(c)/sucsat(c,nlevsoi))**(-1./bsw(c,nlevsoi)))
                  rous=max(rous,0.02_r8)
 
                  pump_tot = - GW_ratio(c) * qflx_irrig(c) * dtime
-                 Pump_wa(c) = - GW_ratio(c) * qflx_irrig(c) * dtime
+                 Pump_wa(c) = GW_ratio(c) * qflx_irrig(c) * dtime
+                 ! if (nstep > 400 .and. c == 838456) write(*,*) 'c,', c, pump_tot, Pump_wa(c) 
                  !!!--  water table is below the soil column  --------------------------------------
                  if(jwt(c) == nlevsoi) then             
                     wa(c)  = wa(c) + pump_tot
                     zwt(c) = zwt(c) - pump_tot/1000._r8/rous
  
                  else                                
-                    !!!-- water table within soil layers 1-9  -------------------------------------
+                    !!!-- water table within soil layers 1-9  --------------------------------------
                     !!!============================== pump_tot ========================================= 
                     !!!--  Now remove water via pump_tot
 
@@ -395,7 +398,7 @@ contains
                  lenMean = (sqrt(g_cellarea_glob(g)) + sqrt(g_cellarea_glob(ldecomp%gtoplft(g)))) * km_to_mm * sqrt(2._r8) / 2._r8
                  deltaxMean = (sqrt(g_cellarea_glob(g)) + sqrt(g_cellarea_glob(ldecomp%gtoplft(g)))) * km_to_mm / 2._r8
                  widMean = deltaxMean * sqrt(0.5_r8 * tan(rpi/8._r8))
-                 Qn_glob(g) = Qn_glob(g) + widMean * AqTransmissMean * (zwt_glob(g) - zwt_glob(ldecomp%gtoplft(g))) * m_to_mm * dtime / lenMean
+                 Qn_glob(g) = Qn_glob(g) + widMean * AqTransmissMean * (zwt_glob(g) - zwt_glob(ldecomp%gtoplft(g))) * m_to_mm / lenMean
 
              end if
 
@@ -403,7 +406,7 @@ contains
                  AqTransmissMean = (AqTransmiss_glob(g) + AqTransmiss_glob(ldecomp%gtop(g)))/2._r8
                  lenMean = (sqrt(g_cellarea_glob(g)) + sqrt(g_cellarea_glob(ldecomp%gtop(g)))) * km_to_mm / 2._r8
                  widMean = lenMean * sqrt(0.5_r8 * tan(rpi/8._r8))
-                 Qn_glob(g) = Qn_glob(g) + widMean * AqTransmissMean * (zwt_glob(g) - zwt_glob(ldecomp%gtop(g))) * m_to_mm * dtime / lenMean
+                 Qn_glob(g) = Qn_glob(g) + widMean * AqTransmissMean * (zwt_glob(g) - zwt_glob(ldecomp%gtop(g))) * m_to_mm / lenMean
 
              end if
 
@@ -412,7 +415,7 @@ contains
                  lenMean = (sqrt(g_cellarea_glob(g)) + sqrt(g_cellarea_glob(ldecomp%gtoprgt(g)))) * km_to_mm * sqrt(2._r8) / 2._r8
                  deltaxMean = (sqrt(g_cellarea_glob(g)) + sqrt(g_cellarea_glob(ldecomp%gtoprgt(g)))) * km_to_mm / 2._r8
                  widMean = deltaxMean * sqrt(0.5_r8 * tan(rpi/8._r8))
-                 Qn_glob(g) = Qn_glob(g) + widMean * AqTransmissMean * (zwt_glob(g) - zwt_glob(ldecomp%gtoprgt(g))) * m_to_mm * dtime / lenMean
+                 Qn_glob(g) = Qn_glob(g) + widMean * AqTransmissMean * (zwt_glob(g) - zwt_glob(ldecomp%gtoprgt(g))) * m_to_mm / lenMean
 
              end if
 
@@ -420,7 +423,7 @@ contains
                  AqTransmissMean = (AqTransmiss_glob(g) + AqTransmiss_glob(ldecomp%grgt(g)))/2._r8
                  lenMean = (sqrt(g_cellarea_glob(g)) + sqrt(g_cellarea_glob(ldecomp%grgt(g)))) * km_to_mm / 2._r8
                  widMean = lenMean * sqrt(0.5_r8 * tan(rpi/8._r8))
-                 Qn_glob(g) = Qn_glob(g) + widMean * AqTransmissMean * (zwt_glob(g) - zwt_glob(ldecomp%grgt(g))) * m_to_mm * dtime / lenMean
+                 Qn_glob(g) = Qn_glob(g) + widMean * AqTransmissMean * (zwt_glob(g) - zwt_glob(ldecomp%grgt(g))) * m_to_mm / lenMean
 
              end if	
 
@@ -429,7 +432,7 @@ contains
                  lenMean = (sqrt(g_cellarea_glob(g)) + sqrt(g_cellarea_glob(ldecomp%gbotrgt(g)))) * km_to_mm * sqrt(2._r8) / 2._r8
                  deltaxMean = (sqrt(g_cellarea_glob(g)) + sqrt(g_cellarea_glob(ldecomp%gbotrgt(g)))) * km_to_mm / 2._r8
                  widMean = deltaxMean * sqrt(0.5_r8 * tan(rpi/8._r8))
-                 Qn_glob(g) = Qn_glob(g) + widMean * AqTransmissMean * (zwt_glob(g) - zwt_glob(ldecomp%gbotrgt(g))) * m_to_mm * dtime / lenMean
+                 Qn_glob(g) = Qn_glob(g) + widMean * AqTransmissMean * (zwt_glob(g) - zwt_glob(ldecomp%gbotrgt(g))) * m_to_mm / lenMean
 
              end if
 
@@ -437,7 +440,7 @@ contains
                  AqTransmissMean = (AqTransmiss_glob(g) + AqTransmiss_glob(ldecomp%gbot(g)))/2._r8
                  lenMean = (sqrt(g_cellarea_glob(g)) + sqrt(g_cellarea_glob(ldecomp%gbot(g)))) * km_to_mm / 2._r8
                  widMean = lenMean * sqrt(0.5_r8 * tan(rpi/8._r8))
-                 Qn_glob(g) = Qn_glob(g) + widMean * AqTransmissMean * (zwt_glob(g) - zwt_glob(ldecomp%gbot(g))) * m_to_mm * dtime / lenMean
+                 Qn_glob(g) = Qn_glob(g) + widMean * AqTransmissMean * (zwt_glob(g) - zwt_glob(ldecomp%gbot(g))) * m_to_mm / lenMean
 
              end if
 
@@ -446,7 +449,7 @@ contains
                  lenMean = (sqrt(g_cellarea_glob(g)) + sqrt(g_cellarea_glob(ldecomp%gbotlft(g)))) * km_to_mm * sqrt(2._r8) / 2._r8
                  deltaxMean = (sqrt(g_cellarea_glob(g)) + sqrt(g_cellarea_glob(ldecomp%gbotlft(g)))) * km_to_mm / 2._r8
                  widMean = deltaxMean * sqrt(0.5_r8 * tan(rpi/8._r8))
-                 Qn_glob(g) = Qn_glob(g) + widMean * AqTransmissMean * (zwt_glob(g) - zwt_glob(ldecomp%gbotlft(g))) * m_to_mm * dtime / lenMean
+                 Qn_glob(g) = Qn_glob(g) + widMean * AqTransmissMean * (zwt_glob(g) - zwt_glob(ldecomp%gbotlft(g))) * m_to_mm / lenMean
 
              end if
 
@@ -454,7 +457,7 @@ contains
                  AqTransmissMean = (AqTransmiss_glob(g) + AqTransmiss_glob(ldecomp%glft(g)))/2._r8
                  lenMean = (sqrt(g_cellarea_glob(g)) + sqrt(g_cellarea_glob(ldecomp%glft(g)))) * km_to_mm / 2._r8
                  widMean = lenMean * sqrt(0.5_r8 * tan(rpi/8._r8))
-                 Qn_glob(g) = Qn_glob(g) + widMean * AqTransmissMean * (zwt_glob(g) - zwt_glob(ldecomp%glft(g))) * m_to_mm * dtime / lenMean
+                 Qn_glob(g) = Qn_glob(g) + widMean * AqTransmissMean * (zwt_glob(g) - zwt_glob(ldecomp%glft(g))) * m_to_mm / lenMean
 
              end if
 
@@ -481,15 +484,15 @@ contains
 
           aRatio  = col%wtgcell(c) / g_totCweight(g)
           colArea = col%wtgcell(c) * grc%area(g) * km2_to_mm2
-          Qgw_lateral(c) = Qn_glob(g) * aRatio / colArea  !unit is mm
+          Qgw_lateral(c) = Qn_glob(g) * aRatio / colArea  !unit is converted to mm/sec 
 
           rous = watsat(c,nlevsoi) &
                * ( 1. - (1.+1.e3*zwt(c)/sucsat(c,nlevsoi))**(-1./bsw(c,nlevsoi)))
           rous=max(rous,0.02_r8)
-
+          ! if (nstep  > 400 .and. c == 838456) write(*,*) 'c,', c, Qgw_lateral(c)
           if (Qgw_lateral(c) > 0._r8) then
 
-                Qgw_lateral_tot = Qgw_lateral(c) * 1._r8
+                Qgw_lateral_tot = Qgw_lateral(c) * dtime * 1._r8
                 if(jwt(c) == nlevsoi) then             
                    wa(c)  = wa(c) + Qgw_lateral_tot
                    zwt(c) = zwt(c) - Qgw_lateral_tot/1000._r8/rous
@@ -514,7 +517,7 @@ contains
 
           else if (Qgw_lateral(c) < 0._r8) then
 
-              Qgw_lateral_tot = Qgw_lateral(c) * 1._r8
+              Qgw_lateral_tot = Qgw_lateral(c) * dtime * 1._r8
               !! --  water table is below the soil column  -------------------------------------- 
               if(jwt(c) == nlevsoi) then             
                  wa(c)  = wa(c) + Qgw_lateral_tot
@@ -524,7 +527,7 @@ contains
                  !! ============================== Qgw_lateral_tot ========================================= 
                  !! --  Now remove water via Qgw_lateral_tot
 
-                 !! should never be positive... but include for completeness
+                 !! should never be positive... but include for completeness 
                  if(Qgw_lateral_tot > 0.) then !rising water table
 
                     call endrun(msg="Qgw_lateral_tot IS POSITIVE in Groundwater!"//errmsg(sourcefile, __LINE__))
