@@ -271,7 +271,7 @@ contains
                   + forc_snow_col(c)         &
                   + qflx_floodc(c)           &
                   + qflx_irrig(c)            &
-                  - soilhydrology_inst%Pump_wa_col(c)/dtime&
+                  - soilhydrology_inst%Pump_wa_col(c)&
                   + soilhydrology_inst%Qgw_lateral_col(c) &
                   + qflx_glcice_dyn_water_flux(c) &
                   - qflx_evap_tot(c)         &
@@ -320,7 +320,7 @@ contains
              write(iulog,*)'nstep                      = ',nstep
              write(iulog,*)'errh2o                     = ',errh2o(indexc)
              write(iulog,*)'lateralflow                = ',soilhydrology_inst%Qgw_lateral_col(indexc)*dtime
-             write(iulog,*)'Pump_wa_col                = ',soilhydrology_inst%Pump_wa_col(indexc)
+             write(iulog,*)'Pump_wa_col                = ',soilhydrology_inst%Pump_wa_col(indexc)*dtime
              write(iulog,*)'forc_rain                  = ',forc_rain_col(indexc)*dtime
              write(iulog,*)'forc_snow                  = ',forc_snow_col(indexc)*dtime
              write(iulog,*)'total_plant_stored_h2o_col = ',total_plant_stored_h2o_col(indexc)
@@ -361,7 +361,7 @@ contains
              write(iulog,*)'nstep                 = ',nstep
              write(iulog,*)'errh2o                = ',errh2o(indexc)
              write(iulog,*)'lateralflow           = ',soilhydrology_inst%Qgw_lateral_col(indexc)*dtime
-             write(iulog,*)'Pump_wa_col           = ',soilhydrology_inst%Pump_wa_col(indexc)
+             write(iulog,*)'Pump_wa_col           = ',soilhydrology_inst%Pump_wa_col(indexc)*dtime
              write(iulog,*)'forc_rain             = ',forc_rain_col(indexc)*dtime
              write(iulog,*)'forc_snow             = ',forc_snow_col(indexc)*dtime
              write(iulog,*)'endwb                 = ',endwb(indexc)
@@ -398,7 +398,7 @@ contains
              write(iulog,*)'nstep                 = ',nstep
              write(iulog,*)'errh2o                = ',errh2o(indexc)
              write(iulog,*)'lateralflow           = ',soilhydrology_inst%Qgw_lateral_col(indexc)*dtime
-             write(iulog,*)'Pump_wa_col           = ',soilhydrology_inst%Pump_wa_col(indexc)
+             write(iulog,*)'Pump_wa_col           = ',soilhydrology_inst%Pump_wa_col(indexc)*dtime
              write(iulog,*)'forc_rain             = ',forc_rain_col(indexc)*dtime
              write(iulog,*)'forc_snow             = ',forc_snow_col(indexc)*dtime
              write(iulog,*)'total_plant_stored_h2o_col = ',total_plant_stored_h2o_col(indexc)
