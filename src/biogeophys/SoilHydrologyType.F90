@@ -28,7 +28,7 @@ Module SoilHydrologyType
      real(r8), pointer :: wa_col            (:)     ! col water in the unconfined aquifer (mm)
      real(r8), pointer :: Qgw_lateral_col   (:)     ! col Groundwater lateral flow (mm/s)
      real(r8), pointer :: AqTransmiss_col   (:)     ! col Aquifer Transmissivity (mm)
-     real(r8), pointer :: Pump_wa_col       (:)     ! col pumped water (mm)
+     real(r8), pointer :: Pump_wa_col       (:)     ! col pumped water (mm/s)
      real(r8), pointer :: qcharge_col       (:)     ! col aquifer recharge rate (mm/s) 
      real(r8), pointer :: fracice_col       (:,:)   ! col fractional impermeability (-)
      real(r8), pointer :: icefrac_col       (:,:)   ! col fraction of ice       
@@ -185,7 +185,7 @@ contains
          ptr_col=this%AqTransmiss_col, l2g_scale_type='veg')
 
     this%Pump_wa_col(begc:endc) = spval
-    call hist_addfld1d (fname='Pumped_Wa',  units='mm2/s',  &
+    call hist_addfld1d (fname='Pumped_Wa',  units='mm/s',  &
          avgflag='A', long_name='Pumped Water from the unconfined aquifer (vegetated landunits only)', &
          ptr_col=this%Pump_wa_col, l2g_scale_type='veg')
 
@@ -293,7 +293,7 @@ contains
 
     call restartvar(ncid=ncid, flag=flag, varname='Pumped_Wa', xtype=ncd_double,  & 
          dim1name='column', &
-         long_name='Pumped water from the unconfined aquifer', units='mm', &
+         long_name='Pumped water from the unconfined aquifer', units='mm/s', &
          interpinic_flag='interp', readvar=readvar, data=this%Pump_wa_col)
 
     call restartvar(ncid=ncid, flag=flag, varname='ZWT', xtype=ncd_double,  & 
