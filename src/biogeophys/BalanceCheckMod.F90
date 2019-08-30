@@ -310,7 +310,7 @@ contains
                ' errh2o= ',errh2o(indexc)
 
           g = col%gridcell(indexc)
-          if (abs(errh2o(indexc)) > 1._r8) then 
+          if (abs(errh2o(indexc)) > 1.e-5_r8) then 
              write(iulog,*)'Ffelfelani Comment 1: clm model is stopping - error is greater than 1 (mm)'
              write(iulog,*)'gridcell                   = ',g
              write(iulog,*)'grc%latdeg(g)              = ',grc%latdeg(g)
@@ -319,7 +319,8 @@ contains
              write(iulog,*)'soilhydrology_inst%wa_col  = ',soilhydrology_inst%wa_col(indexc)
              write(iulog,*)'nstep                      = ',nstep
              write(iulog,*)'errh2o                     = ',errh2o(indexc)
-             write(iulog,*)'lateralflow                = ',soilhydrology_inst%Qgw_lateral_col(indexc)			 
+             write(iulog,*)'lateralflow                = ',soilhydrology_inst%Qgw_lateral_col(indexc)
+             write(iulog,*)'Pump_wa_col                = ',soilhydrology_inst%Pump_wa_col(indexc)
              write(iulog,*)'forc_rain                  = ',forc_rain_col(indexc)*dtime
              write(iulog,*)'forc_snow                  = ',forc_snow_col(indexc)*dtime
              write(iulog,*)'total_plant_stored_h2o_col = ',total_plant_stored_h2o_col(indexc)
@@ -360,6 +361,7 @@ contains
              write(iulog,*)'nstep                 = ',nstep
              write(iulog,*)'errh2o                = ',errh2o(indexc)
              write(iulog,*)'lateralflow           = ',soilhydrology_inst%Qgw_lateral_col(indexc)
+             write(iulog,*)'Pump_wa_col           = ',soilhydrology_inst%Pump_wa_col(indexc)
              write(iulog,*)'forc_rain             = ',forc_rain_col(indexc)*dtime
              write(iulog,*)'forc_snow             = ',forc_snow_col(indexc)*dtime
              write(iulog,*)'endwb                 = ',endwb(indexc)
@@ -396,6 +398,7 @@ contains
              write(iulog,*)'nstep                 = ',nstep
              write(iulog,*)'errh2o                = ',errh2o(indexc)
              write(iulog,*)'lateralflow           = ',soilhydrology_inst%Qgw_lateral_col(indexc)
+             write(iulog,*)'Pump_wa_col           = ',soilhydrology_inst%Pump_wa_col(indexc)
              write(iulog,*)'forc_rain             = ',forc_rain_col(indexc)*dtime
              write(iulog,*)'forc_snow             = ',forc_snow_col(indexc)*dtime
              write(iulog,*)'total_plant_stored_h2o_col = ',total_plant_stored_h2o_col(indexc)
