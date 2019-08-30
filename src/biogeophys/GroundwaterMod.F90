@@ -176,7 +176,7 @@ contains
           qcharge            =>    soilhydrology_inst%qcharge_col        , & ! Input:  [real(r8) (:)   ]  aquifer recharge rate (mm/s)
           Qgw_lateral        =>    soilhydrology_inst%Qgw_lateral_col    , & ! Output: [real(r8) (:)   ]  GW lateral flow (mm/s)
           AqTransmiss        =>    soilhydrology_inst%AqTransmiss_col    , & ! Output: [real(r8) (:)   ]  Aquifer Transmissivity(mm2/s)
-          Pump_wa            =>    soilhydrology_inst%Pump_wa_col        , & ! Output: [real(r8) (:)   ]  Pumped Water from the aquifer(mm)
+          Pump_wa            =>    soilhydrology_inst%Pump_wa_col        , & ! Output: [real(r8) (:)   ]  Pumped Water from the aquifer(mm/s)
 
           h2osoi_liq         =>    waterstate_inst%h2osoi_liq_col        & ! Output: [real(r8) (:,:) ] liquid water (kg/m2)
           )
@@ -263,7 +263,7 @@ contains
                  rous=max(rous,0.02_r8)
 
                  pump_tot = - GW_ratio(c) * qflx_irrig(c) * dtime
-                 Pump_wa(c) = GW_ratio(c) * qflx_irrig(c) * dtime
+                 Pump_wa(c) = GW_ratio(c) * qflx_irrig(c)
                  ! if (nstep > 400 .and. c == 838456) write(*,*) 'c,', c, pump_tot, Pump_wa(c) 
                  !!!--  water table is below the soil column  --------------------------------------
                  if(jwt(c) == nlevsoi) then             
