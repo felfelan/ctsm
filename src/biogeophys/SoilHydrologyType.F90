@@ -26,7 +26,7 @@ Module SoilHydrologyType
      real(r8), pointer :: zwts_col          (:)     ! col water table depth, the shallower of the two water depths
      real(r8), pointer :: zwt_perched_col   (:)     ! col perched water table depth
      real(r8), pointer :: wa_col            (:)     ! col water in the unconfined aquifer (mm)
-     real(r8), pointer :: Qgw_lateral_col   (:)     ! col Groundwater lateral flow (mm)
+     real(r8), pointer :: Qgw_lateral_col   (:)     ! col Groundwater lateral flow (mm/s)
      real(r8), pointer :: AqTransmiss_col   (:)     ! col Aquifer Transmissivity (mm)
      real(r8), pointer :: Pump_wa_col       (:)     ! col pumped water (mm)
      real(r8), pointer :: qcharge_col       (:)     ! col aquifer recharge rate (mm/s) 
@@ -175,7 +175,7 @@ contains
          ptr_col=this%wa_col, l2g_scale_type='veg')
 
     this%Qgw_lateral_col(begc:endc) = spval
-    call hist_addfld1d (fname='Qgw_lateral',  units='mm',  &
+    call hist_addfld1d (fname='Qgw_lateral',  units='mm/s',  &
          avgflag='A', long_name='Groundwater lateral water in the unconfined aquifer (vegetated landunits only)', &
          ptr_col=this%Qgw_lateral_col, l2g_scale_type='veg')
 
@@ -283,7 +283,7 @@ contains
 
     call restartvar(ncid=ncid, flag=flag, varname='Qgw_lateral', xtype=ncd_double,  & 
          dim1name='column', &
-         long_name='Groundwater lateral water in the unconfined aquifer', units='mm', &
+         long_name='Groundwater lateral water in the unconfined aquifer', units='mm/s', &
          interpinic_flag='interp', readvar=readvar, data=this%Qgw_lateral_col)
 
     call restartvar(ncid=ncid, flag=flag, varname='Aq_Transmissivity', xtype=ncd_double,  & 
