@@ -482,6 +482,7 @@ contains
           c = filter_hydrologyc(fc)
           g = col%gridcell(c)
 
+          ! going back from Grid level to Column Level
           aRatio  = col%wtgcell(c) / g_totCweight(g)
           colArea = col%wtgcell(c) * grc%area(g) * km2_to_mm2
           Qgw_lateral(c) = Qn_glob(g) * aRatio / colArea  !unit is converted to mm/sec 
