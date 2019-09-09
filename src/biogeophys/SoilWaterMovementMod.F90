@@ -57,8 +57,9 @@ module SoilWaterMovementMod
   ! FFelfelani Comment: Groundwater Scheme
   integer, parameter :: gw_default  = 0
   integer, parameter :: gw_FanLat_Pump  = 1
-  integer, parameter :: gw_Theim_GleesonTransmiss  = 2
-  integer, parameter :: gw_Fan  = 3
+  integer, parameter :: gw_FanLat_TheimPump  = 2
+  integer, parameter :: gw_Theim_GleesonTransmiss  = 3
+  integer, parameter :: gw_Fan  = 4
   
   ! Soil hydraulic properties
   integer, parameter :: soil_hp_clapphornberg_1978=0
