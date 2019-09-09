@@ -43,8 +43,9 @@ module SoilHydrologyMod
   ! FFelfelani Comment: Groundwater Scheme
   integer, parameter :: gw_default  = 0
   integer, parameter :: gw_FanLat_Pump  = 1
-  integer, parameter :: gw_Theim_GleesonTransmiss  = 2
-  integer, parameter :: gw_Fan  = 3 
+  integer, parameter :: gw_FanLat_TheimPump  = 2
+  integer, parameter :: gw_Theim_GleesonTransmiss  = 3
+  integer, parameter :: gw_Fan  = 4 
   
   character(len=*), parameter, private :: sourcefile = &
        __FILE__
@@ -830,10 +831,14 @@ contains
 
           ! Groundwater scheme: Theim Theory + Ying Fan Transmissivity 
           case(gw_FanLat_Pump)
-            if (masterproc .and. secs == 0) write(iulog,*) 'This is Theim groundwater  scheme  '  
+            if (masterproc .and. secs == 0) write(iulog,*) 'This is gw_FanLat_Pump groundwater  scheme  '  
             call groundwater_inst%UpdateGWFanLatPump(bounds, num_hydrologyc, filter_hydrologyc,&
                  soilhydrology_inst, soilstate_inst,waterstate_inst,irrigation_inst)
 
+          case(gw_FanLat_TheimPump)
+            if (masterproc .and. secs == 0) write(iulog,*) 'This is gw_FanLat_TheimPump groundwater  scheme  '  
+            call groundwater_inst%UpdateGWFanLatTheimPump(bounds, num_hydrologyc, filter_hydrologyc,&
+                 soilhydrology_inst, soilstate_inst,waterstate_inst,irrigation_inst)
 				 
           ! Groundwater scheme: Theim Theory + Gleeson Transmissivity 
           case(gw_Theim_GleesonTransmiss)
