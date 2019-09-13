@@ -985,7 +985,7 @@ contains
 										  
                  Qn_glob(g) = Qn_glob(g) + QLateral
 
-                 t_edge = t_edge - QLateral !why negative: because the + direction in upward
+                 t_edge = t_edge - QLateral !why negative: because the + direction in upward 
 
              end if
 
