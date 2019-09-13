@@ -16,7 +16,7 @@ Module SoilHydrologyType
   !
   type, public :: soilhydrology_type
 
-     integer :: h2osfcflag              ! true => surface water is active (namelist)       
+     integer :: h2osfcflag              ! true => surface water is active (namelist)        
      integer :: origflag                ! used to control soil hydrology properties (namelist)
 
      real(r8), pointer :: num_substeps_col   (:)    ! col adaptive timestep counter     
@@ -29,6 +29,8 @@ Module SoilHydrologyType
      real(r8), pointer :: Qgw_lateral_col   (:)     ! col Groundwater lateral flow (mm/s)
      real(r8), pointer :: AqTransmiss_col   (:)     ! col Aquifer Transmissivity (mm)
      real(r8), pointer :: Pump_wa_col       (:)     ! col pumped water (mm/s)
+     real(r8), pointer :: QlatField_northing_grc (:)! grc Groundwater lateral flow towards north (+)(mm)
+     real(r8), pointer :: QlatField_easting_grc  (:)! grc Groundwater lateral flow towards east (+)(mm)
      real(r8), pointer :: qcharge_col       (:)     ! col aquifer recharge rate (mm/s) 
      real(r8), pointer :: fracice_col       (:,:)   ! col fractional impermeability (-)
      real(r8), pointer :: icefrac_col       (:,:)   ! col fraction of ice       
@@ -123,6 +125,9 @@ contains
     allocate(this%Qgw_lateral_col   (begc:endc))                 ; this%Qgw_lateral_col   (:)     = nan
     allocate(this%AqTransmiss_col   (begc:endc))                 ; this%AqTransmiss_col   (:)     = nan
     allocate(this%Pump_wa_col       (begc:endc))                 ; this%Pump_wa_col       (:)     = nan
+    allocate(this%QlatField_northing_grc (begg:endg)             ; this%QlatField_northing_grc(:) = nan
+    allocate(this%QlatField_easting_grc  (begg:endg)             ; this%QlatField_easting_grc (:) = nan
+	
     allocate(this%qcharge_col       (begc:endc))                 ; this%qcharge_col       (:)     = nan
     allocate(this%fracice_col       (begc:endc,nlevgrnd))        ; this%fracice_col       (:,:)   = nan
     allocate(this%icefrac_col       (begc:endc,nlevgrnd))        ; this%icefrac_col       (:,:)   = nan
@@ -188,6 +193,16 @@ contains
     call hist_addfld1d (fname='Pumped_Wa',  units='mm/s',  &
          avgflag='A', long_name='Pumped Water from the unconfined aquifer (vegetated landunits only)', &
          ptr_col=this%Pump_wa_col, l2g_scale_type='veg')
+
+    this%QlatField_northing_grc(begg:endg) = spval
+    call hist_addfld1d (fname='QlatField_northing_grc',  units='mm',  &
+         avgflag='A', long_name='Northward groundwater lateral flow', &
+         ptr_lnd=this%QlatField_northing_grc, l2g_scale_type='veg')
+
+    this%QlatField_easting_grc(begg:endg) = spval
+    call hist_addfld1d (fname='QlatField_easting_grc',  units='mm',  &
+         avgflag='A', long_name='Eastward groundwater lateral flow', &
+         ptr_lnd=this%QlatField_easting_grc, l2g_scale_type='veg')
 
     this%qcharge_col(begc:endc) = spval
     call hist_addfld1d (fname='QCHARGE',  units='mm/s',  &
@@ -296,6 +311,16 @@ contains
          long_name='Pumped water from the unconfined aquifer', units='mm/s', &
          interpinic_flag='interp', readvar=readvar, data=this%Pump_wa_col)
 
+    call restartvar(ncid=ncid, flag=flag, varname='QlatField_northing_grc', xtype=ncd_double,  & 
+         dim1name='gridcell', &
+         long_name='Northward groundwater lateral flow', units='mm', &
+         interpinic_flag='skip', readvar=readvar, data=this%QlatField_northing_grc)		 
+		 
+    call restartvar(ncid=ncid, flag=flag, varname='QlatField_easting_grc', xtype=ncd_double,  & 
+         dim1name='gridcell', &
+         long_name='Eastward groundwater lateral flow', units='mm', &
+         interpinic_flag='skip', readvar=readvar, data=this%QlatField_easting_grc)		 
+		 
     call restartvar(ncid=ncid, flag=flag, varname='ZWT', xtype=ncd_double,  & 
          dim1name='column', &
          long_name='water table depth', units='m', &
