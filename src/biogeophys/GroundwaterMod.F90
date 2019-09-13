@@ -135,6 +135,8 @@ contains
     real(r8) :: Qgw_lateral_tot, Qgw_lateral_layer
     integer  :: jwt(bounds%begc:bounds%endc)       ! index of the soil layer right above the water table (-)
     real(r8) :: dtime                              ! land model time step (sec)
+    real(r8) :: QLateral
+    real(r8) :: l_edge,r_edge,t_edge,b_edge        ! GW lateral on left, right, top, and bottom edge of the cell
 	
     integer :: ng, nl, nc, np, nCohorts            ! total number of grid cells,landunits,columns,patches
     integer :: g, c                                ! patch, gridcell, column indices
@@ -177,6 +179,8 @@ contains
           Qgw_lateral        =>    soilhydrology_inst%Qgw_lateral_col    , & ! Output: [real(r8) (:)   ]  GW lateral flow (mm/s)
           AqTransmiss        =>    soilhydrology_inst%AqTransmiss_col    , & ! Output: [real(r8) (:)   ]  Aquifer Transmissivity(mm2/s)
           Pump_wa            =>    soilhydrology_inst%Pump_wa_col        , & ! Output: [real(r8) (:)   ]  Pumped Water from the aquifer(mm/s)
+          QlatField_north    =>    soilhydrology_inst%QlatField_northing_grc , & !  Output: [real(r8) (:)   ] Northward lateral GW flow
+          QlatField_east     =>    soilhydrology_inst%QlatField_easting_grc  , & !  Output: [real(r8) (:)   ] Eastward lateral GW flow
 
           h2osoi_liq         =>    waterstate_inst%h2osoi_liq_col        & ! Output: [real(r8) (:,:) ] liquid water (kg/m2)
           )
@@ -382,6 +386,11 @@ contains
 
        ! gathering the information from the neigboring cells.
        do  g = 1, ng
+
+          l_edge = 0._r8
+          r_edge = 0._r8
+          t_edge = 0._r8
+          b_edge = 0._r8
           ! The GW lateral flow is ruled by Darcy's
           if (ZeroHydroCell_glob(g)== 0) then
 
@@ -391,6 +400,10 @@ contains
                  deltaxMean = (sqrt(g_cellarea_glob(g)) + sqrt(g_cellarea_glob(ldecomp%gtoplft(g)))) * km_to_mm / 2._r8
                  widMean = deltaxMean * sqrt(0.5_r8 * tan(rpi/8._r8))
                  Qn_glob(g) = Qn_glob(g) + widMean * AqTransmissMean * (zwt_glob(g) - zwt_glob(ldecomp%gtoplft(g))) * m_to_mm / lenMean
+                 QLateral   = widMean * AqTransmissMean * (zwt_glob(g) - zwt_glob(ldecomp%gtoplft(g))) * m_to_mm / lenMean
+				 
+                 l_edge = l_edge + QLateral * sqrt(2._r8)/2._r8  !why positive: because the + direction in eastward
+                 t_edge = t_edge - QLateral * sqrt(2._r8)/2._r8  !why negative: because the + direction in upward
 
              end if
 
@@ -399,6 +412,9 @@ contains
                  lenMean = (sqrt(g_cellarea_glob(g)) + sqrt(g_cellarea_glob(ldecomp%gtop(g)))) * km_to_mm / 2._r8
                  widMean = lenMean * sqrt(0.5_r8 * tan(rpi/8._r8))
                  Qn_glob(g) = Qn_glob(g) + widMean * AqTransmissMean * (zwt_glob(g) - zwt_glob(ldecomp%gtop(g))) * m_to_mm / lenMean
+                 QLateral   = widMean * AqTransmissMean * (zwt_glob(g) - zwt_glob(ldecomp%gtop(g))) * m_to_mm / lenMean
+
+                 t_edge = t_edge - QLateral !why negative: because the + direction in upward
 
              end if
 
@@ -408,6 +424,10 @@ contains
                  deltaxMean = (sqrt(g_cellarea_glob(g)) + sqrt(g_cellarea_glob(ldecomp%gtoprgt(g)))) * km_to_mm / 2._r8
                  widMean = deltaxMean * sqrt(0.5_r8 * tan(rpi/8._r8))
                  Qn_glob(g) = Qn_glob(g) + widMean * AqTransmissMean * (zwt_glob(g) - zwt_glob(ldecomp%gtoprgt(g))) * m_to_mm / lenMean
+                 QLateral   = widMean * AqTransmissMean * (zwt_glob(g) - zwt_glob(ldecomp%gtoprgt(g))) * m_to_mm / lenMean
+
+                 r_edge = r_edge - QLateral * sqrt(2._r8)/2._r8
+                 t_edge = t_edge - QLateral * sqrt(2._r8)/2._r8
 
              end if
 
@@ -416,6 +436,9 @@ contains
                  lenMean = (sqrt(g_cellarea_glob(g)) + sqrt(g_cellarea_glob(ldecomp%grgt(g)))) * km_to_mm / 2._r8
                  widMean = lenMean * sqrt(0.5_r8 * tan(rpi/8._r8))
                  Qn_glob(g) = Qn_glob(g) + widMean * AqTransmissMean * (zwt_glob(g) - zwt_glob(ldecomp%grgt(g))) * m_to_mm / lenMean
+                 QLateral   = widMean * AqTransmissMean * (zwt_glob(g) - zwt_glob(ldecomp%grgt(g))) * m_to_mm / lenMean
+
+                 r_edge = r_edge - QLateral
 
              end if	
 
@@ -425,6 +448,10 @@ contains
                  deltaxMean = (sqrt(g_cellarea_glob(g)) + sqrt(g_cellarea_glob(ldecomp%gbotrgt(g)))) * km_to_mm / 2._r8
                  widMean = deltaxMean * sqrt(0.5_r8 * tan(rpi/8._r8))
                  Qn_glob(g) = Qn_glob(g) + widMean * AqTransmissMean * (zwt_glob(g) - zwt_glob(ldecomp%gbotrgt(g))) * m_to_mm / lenMean
+                 QLateral   = widMean * AqTransmissMean * (zwt_glob(g) - zwt_glob(ldecomp%gbotrgt(g))) * m_to_mm / lenMean
+
+                 r_edge = r_edge - QLateral * sqrt(2._r8)/2._r8
+                 b_edge = b_edge + QLateral * sqrt(2._r8)/2._r8
 
              end if
 
@@ -433,6 +460,9 @@ contains
                  lenMean = (sqrt(g_cellarea_glob(g)) + sqrt(g_cellarea_glob(ldecomp%gbot(g)))) * km_to_mm / 2._r8
                  widMean = lenMean * sqrt(0.5_r8 * tan(rpi/8._r8))
                  Qn_glob(g) = Qn_glob(g) + widMean * AqTransmissMean * (zwt_glob(g) - zwt_glob(ldecomp%gbot(g))) * m_to_mm / lenMean
+                 QLateral   = widMean * AqTransmissMean * (zwt_glob(g) - zwt_glob(ldecomp%gbot(g))) * m_to_mm / lenMean
+
+                 b_edge = b_edge + QLateral
 
              end if
 
@@ -442,6 +472,10 @@ contains
                  deltaxMean = (sqrt(g_cellarea_glob(g)) + sqrt(g_cellarea_glob(ldecomp%gbotlft(g)))) * km_to_mm / 2._r8
                  widMean = deltaxMean * sqrt(0.5_r8 * tan(rpi/8._r8))
                  Qn_glob(g) = Qn_glob(g) + widMean * AqTransmissMean * (zwt_glob(g) - zwt_glob(ldecomp%gbotlft(g))) * m_to_mm / lenMean
+                 QLateral   = widMean * AqTransmissMean * (zwt_glob(g) - zwt_glob(ldecomp%gbotlft(g))) * m_to_mm / lenMean
+
+                 l_edge = l_edge + QLateral * sqrt(2._r8)/2._r8
+                 b_edge = b_edge + QLateral * sqrt(2._r8)/2._r8
 
              end if
 
@@ -450,13 +484,19 @@ contains
                  lenMean = (sqrt(g_cellarea_glob(g)) + sqrt(g_cellarea_glob(ldecomp%glft(g)))) * km_to_mm / 2._r8
                  widMean = lenMean * sqrt(0.5_r8 * tan(rpi/8._r8))
                  Qn_glob(g) = Qn_glob(g) + widMean * AqTransmissMean * (zwt_glob(g) - zwt_glob(ldecomp%glft(g))) * m_to_mm / lenMean
+                 QLateral   = widMean * AqTransmissMean * (zwt_glob(g) - zwt_glob(ldecomp%glft(g))) * m_to_mm / lenMean
+
+                 l_edge = l_edge + QLateral
 
              end if
 
           ! IF there is pumping, the GW lateral flow is ruled by Combination of Darcy's and Theim
           ! else if (ZeroHydroCell_glob(g)== 0 .and. GW_ratio_long(g) * qirrig_long(g) > 0._r8) then
 
+             QlatField_north(g) = (t_edge + b_edge)/2._r8
+             QlatField_east(g)  = (r_edge + l_edge)/2._r8
           end if
+ 
        end do
    
        ! Checking the lateral water balance (in terms of volume) 
@@ -641,6 +681,7 @@ contains
     real(r8) :: QLateral    
     integer  :: jwt(bounds%begc:bounds%endc)       ! index of the soil layer right above the water table (-)
     real(r8) :: dtime                              ! land model time step (sec)
+    real(r8) :: l_edge,r_edge,t_edge,b_edge        ! GW lateral on left, right, top, and bottom edge of the cell
 	
     integer :: ng, nl, nc, np, nCohorts            ! total number of grid cells,landunits,columns,patches
     integer :: g, c                                ! patch, gridcell, column indices
@@ -683,7 +724,9 @@ contains
           Qgw_lateral        =>    soilhydrology_inst%Qgw_lateral_col    , & ! Output: [real(r8) (:)   ]  GW lateral flow (mm/s)
           AqTransmiss        =>    soilhydrology_inst%AqTransmiss_col    , & ! Output: [real(r8) (:)   ]  Aquifer Transmissivity(mm2/s)
           Pump_wa            =>    soilhydrology_inst%Pump_wa_col        , & ! Output: [real(r8) (:)   ]  Pumped Water from the aquifer(mm/s)
-
+          QlatField_north    =>    soilhydrology_inst%QlatField_northing_grc , & !  Output: [real(r8) (:)   ] Northward lateral GW flow
+          QlatField_east     =>    soilhydrology_inst%QlatField_easting_grc  , & !  Output: [real(r8) (:)   ] Eastward lateral GW flow
+		  
           h2osoi_liq         =>    waterstate_inst%h2osoi_liq_col        & ! Output: [real(r8) (:,:) ] liquid water (kg/m2)
           )
        !-----------------------------------------------
@@ -905,10 +948,15 @@ contains
                           MPI_INTEGER, MPI_SUM, mpicom, ier)
 
        call mpi_barrier(mpicom,ier)
-
+	   
        ! gathering the information from the neigboring cells.
        do  g = 1, ng
        ! do g = bounds%begg,bounds%endg
+          l_edge = 0._r8
+          r_edge = 0._r8
+          t_edge = 0._r8
+          b_edge = 0._r8
+
           ! The GW lateral flow is ruled by Darcy's
           if (ZeroHydroCell_glob(g)== 0) then
 
@@ -922,6 +970,9 @@ contains
 										  
                  Qn_glob(g) = Qn_glob(g) + QLateral
 
+                 l_edge = l_edge + QLateral * sqrt(2._r8)/2._r8  !why positive: because the + direction in eastward
+                 t_edge = t_edge - QLateral * sqrt(2._r8)/2._r8  !why negative: because the + direction in upward
+
              end if
 
              if (ldecomp%gtop(g) <= ng .and. ldecomp%gtop(g) >= 1 .and. ZeroHydroCell_glob(ldecomp%gtop(g)) == 0) then
@@ -934,6 +985,8 @@ contains
 										  
                  Qn_glob(g) = Qn_glob(g) + QLateral
 
+                 t_edge = t_edge - QLateral !why negative: because the + direction in upward
+
              end if
 
              if (ldecomp%gtoprgt(g) <= ng .and. ldecomp%gtoprgt(g) >= 1 .and. ZeroHydroCell_glob(ldecomp%gtoprgt(g)) == 0) then
@@ -944,8 +997,11 @@ contains
                                               Pump_wa_glob(g), Pump_wa_glob(ldecomp%gtoprgt(g)), &
                                               zwt_glob(g), zwt_glob(ldecomp%gtoprgt(g)),'___Diag')
 										  
-                 Qn_glob(g) = Qn_glob(g) + QLateral			 
+                 Qn_glob(g) = Qn_glob(g) + QLateral
 
+                 r_edge = r_edge - QLateral * sqrt(2._r8)/2._r8
+                 t_edge = t_edge - QLateral * sqrt(2._r8)/2._r8
+				 
              end if
 
              if (ldecomp%grgt(g) <= ng .and. ldecomp%grgt(g) >= 1 .and. ZeroHydroCell_glob(ldecomp%grgt(g)) == 0) then
@@ -958,6 +1014,8 @@ contains
 										  
                  Qn_glob(g) = Qn_glob(g) + QLateral				 
 
+                 r_edge = r_edge - QLateral
+
              end if	
 
              if (ldecomp%gbotrgt(g) <= ng .and. ldecomp%gbotrgt(g) >= 1 .and. ZeroHydroCell_glob(ldecomp%gbotrgt(g)) == 0) then
@@ -968,7 +1026,10 @@ contains
                                               Pump_wa_glob(g), Pump_wa_glob(ldecomp%gbotrgt(g)), &
                                               zwt_glob(g), zwt_glob(ldecomp%gbotrgt(g)),'___Diag')
 										  
-                 Qn_glob(g) = Qn_glob(g) + QLateral		
+                 Qn_glob(g) = Qn_glob(g) + QLateral
+
+                 r_edge = r_edge - QLateral * sqrt(2._r8)/2._r8
+                 b_edge = b_edge + QLateral * sqrt(2._r8)/2._r8
 
              end if
 
@@ -982,6 +1043,8 @@ contains
 										  
                  Qn_glob(g) = Qn_glob(g) + QLateral		
 
+                 b_edge = b_edge + QLateral
+
              end if
 
              if (ldecomp%gbotlft(g) <= ng .and. ldecomp%gbotlft(g) >= 1 .and. ZeroHydroCell_glob(ldecomp%gbotlft(g)) == 0) then
@@ -993,6 +1056,9 @@ contains
                                               zwt_glob(g), zwt_glob(ldecomp%gbotlft(g)),'___Diag')
 										  
                  Qn_glob(g) = Qn_glob(g) + QLateral		
+
+                 l_edge = l_edge + QLateral * sqrt(2._r8)/2._r8
+                 b_edge = b_edge + QLateral * sqrt(2._r8)/2._r8
 
              end if
 
@@ -1007,12 +1073,17 @@ contains
 										  
                  Qn_glob(g) = Qn_glob(g) + QLateral	
 
+                 l_edge = l_edge + QLateral
+
              end if
+
+             QlatField_north(g) = (t_edge + b_edge)/2._r8
+             QlatField_east(g)  = (r_edge + l_edge)/2._r8 
 
           end if
        end do
    
-       ! Checking the lateral water balance (in terms of volume) 
+       ! Checking the lateral water balance (in terms of volume)  
        if (iam == 200) then
           dummysum = 0._r8
           do  g = 1, ng
@@ -1287,40 +1358,44 @@ contains
 
        lenMean = (sqrt(gcellarea_cent) + sqrt(gcellarea_neig)) * km_to_mm / 2._r8
        widMean = lenMean * sqrt(0.5_r8 * tan(rpi/8._r8))
-	
+
     end if
 
+    ! Theim for the center cell; Fan lateral for the neighbor
     if (PumpWa_cent > 0._r8 .and. PumpWa_neig == 0._r8 .and. zwt_cent > zwt_neig) then
-	
+
         QLateral = SHR_CONST_PI * AqTransmissMean * (zwt_cent - zwt_neig) * m_to_mm / 4._r8 / log(1._r8 / 0.17803_r8) + &
-		           qchargeMean * SHR_CONST_PI * cellareaMean * km2_to_mm2 * (1._r8 - 0.17803_r8**2) / 16._r8 / log(1._r8 / 0.17803_r8) - &
+                   qchargeMean * SHR_CONST_PI * cellareaMean * km2_to_mm2 * (1._r8 - 0.17803_r8**2) / 16._r8 / log(1._r8 / 0.17803_r8) - &
                    qchargeMean * SHR_CONST_PI * (0.17803_r8 * sqrt(cellareaMean) * km_to_mm)**2 / 8._r8
-	
+
+    ! Theim for the neighbor cell; Fan lateral for the center
     else if (PumpWa_cent == 0._r8 .and. PumpWa_neig > 0._r8 .and. zwt_cent < zwt_neig) then 
 
         QLateral = -(SHR_CONST_PI * AqTransmissMean * (zwt_neig - zwt_cent) * m_to_mm / 4._r8 / log(1._r8 / 0.17803_r8) + &
-		           qchargeMean * SHR_CONST_PI * cellareaMean * km2_to_mm2 * (1._r8 - 0.17803_r8**2) / 16._r8 / log(1._r8 / 0.17803_r8) - &
+                   qchargeMean * SHR_CONST_PI * cellareaMean * km2_to_mm2 * (1._r8 - 0.17803_r8**2) / 16._r8 / log(1._r8 / 0.17803_r8) - &
                    qchargeMean * SHR_CONST_PI * (0.17803_r8 * sqrt(cellareaMean) * km_to_mm)**2 / 8._r8) 
-	
+
+    ! Theim for the neighbor cell
     else if (PumpWa_cent > 0._r8 .and. PumpWa_neig > 0._r8 .and. zwt_cent < zwt_neig) then
 
         QLateral = -(SHR_CONST_PI * AqTransmissMean * (zwt_neig - zwt_cent) * m_to_mm / 4._r8 / log(1._r8 / 0.17803_r8) + &
-		           qchargeMean * SHR_CONST_PI * cellareaMean * km2_to_mm2 * (1._r8 - 0.17803_r8**2) / 16._r8 / log(1._r8 / 0.17803_r8) - &
+                   qchargeMean * SHR_CONST_PI * cellareaMean * km2_to_mm2 * (1._r8 - 0.17803_r8**2) / 16._r8 / log(1._r8 / 0.17803_r8) - &
                    qchargeMean * SHR_CONST_PI * (0.17803_r8 * sqrt(cellareaMean) * km_to_mm)**2 / 8._r8)  
-	
+
+    ! Theim for the center cell
     else if (PumpWa_cent > 0._r8 .and. PumpWa_neig > 0._r8 .and. zwt_cent > zwt_neig) then
 
         QLateral = SHR_CONST_PI * AqTransmissMean * (zwt_cent - zwt_neig) * m_to_mm / 4._r8 / log(1._r8 / 0.17803_r8) + &
-		           qchargeMean * SHR_CONST_PI * cellareaMean * km2_to_mm2 * (1._r8 - 0.17803_r8**2) / 16._r8 / log(1._r8 / 0.17803_r8) - &
+                   qchargeMean * SHR_CONST_PI * cellareaMean * km2_to_mm2 * (1._r8 - 0.17803_r8**2) / 16._r8 / log(1._r8 / 0.17803_r8) - &
                    qchargeMean * SHR_CONST_PI * (0.17803_r8 * sqrt(cellareaMean) * km_to_mm)**2 / 8._r8 
-	
+
     else
 
         QLateral = widMean * AqTransmissMean * (zwt_cent - zwt_neig) * m_to_mm / lenMean
 
     end if
     QLatDummy =  widMean * AqTransmissMean * (zwt_cent - zwt_neig) * m_to_mm / lenMean
-	
+
     if (QLatDummy .ne. QLateral) write(*,*) "QLateral_Fan, QLateral_Theim", QLatDummy, QLateral
     ! write(*,*) 'QLatDummy, QLateral',QLatDummy, QLateral
     ! write(*,*) 'Trans_cent, Trans_neig',AqTransmiss_cent, AqTransmiss_neig
