@@ -125,8 +125,8 @@ contains
     allocate(this%Qgw_lateral_col   (begc:endc))                 ; this%Qgw_lateral_col   (:)     = nan
     allocate(this%AqTransmiss_col   (begc:endc))                 ; this%AqTransmiss_col   (:)     = nan
     allocate(this%Pump_wa_col       (begc:endc))                 ; this%Pump_wa_col       (:)     = nan
-    allocate(this%QlatField_northing_grc (begg:endg)             ; this%QlatField_northing_grc(:) = nan
-    allocate(this%QlatField_easting_grc  (begg:endg)             ; this%QlatField_easting_grc (:) = nan
+    allocate(this%QlatField_northing_grc (begg:endg))            ; this%QlatField_northing_grc(:) = nan
+    allocate(this%QlatField_easting_grc  (begg:endg))            ; this%QlatField_easting_grc (:) = nan
 	
     allocate(this%qcharge_col       (begc:endc))                 ; this%qcharge_col       (:)     = nan
     allocate(this%fracice_col       (begc:endc,nlevgrnd))        ; this%fracice_col       (:,:)   = nan
