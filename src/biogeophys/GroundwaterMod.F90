@@ -385,8 +385,8 @@ contains
        call mpi_barrier(mpicom,ier)
 
        ! gathering the information from the neigboring cells.
-       do  g = 1, ng
-
+       ! do  g = 1, ng
+       do g = bounds%begg,bounds%endg
           l_edge = 0._r8
           r_edge = 0._r8
           t_edge = 0._r8
@@ -500,13 +500,13 @@ contains
        end do
    
        ! Checking the lateral water balance (in terms of volume) 
-       if (iam == 200) then
-          dummysum = 0._r8
-          do  g = 1, ng
-              dummysum = dummysum + Qn_glob(g)
-          end do
-          write(*,*) 'Felfelani: this is the sum of the Latera GW; ', dummysum
-       end if
+       !if (iam == 200) then
+       !   dummysum = 0._r8
+       !   do  g = 1, ng
+       !       dummysum = dummysum + Qn_glob(g)
+       !   end do
+       !   write(*,*) 'Felfelani: this is the sum of the Latera GW; ', dummysum
+       !end if
        ! convert m to mm water
 
 
@@ -950,8 +950,8 @@ contains
        call mpi_barrier(mpicom,ier)
 	   
        ! gathering the information from the neigboring cells.
-       do  g = 1, ng
-       ! do g = bounds%begg,bounds%endg
+       ! do  g = 1, ng
+       do g = bounds%begg,bounds%endg
           l_edge = 0._r8
           r_edge = 0._r8
           t_edge = 0._r8
@@ -1083,14 +1083,14 @@ contains
           end if
        end do
    
-       ! Checking the lateral water balance (in terms of volume)  
-       if (iam == 200) then
-          dummysum = 0._r8
-          do  g = 1, ng
-              dummysum = dummysum + Qn_glob(g)
-          end do
-          write(*,*) 'Felfelani: this is the sum of the Latera GW; ', dummysum
-       end if
+       ! Checking the lateral water balance (in terms of volume)
+       !if (iam == 200) then
+       !   dummysum = 0._r8
+       !   do  g = 1, ng
+       !       dummysum = dummysum + Qn_glob(g)
+       !   end do
+       !   write(*,*) 'Felfelani: this is the sum of the Latera GW; ', dummysum
+       !end if
 
 
        do fc = 1, num_hydrologyc
@@ -1396,7 +1396,7 @@ contains
     end if
     QLatDummy =  widMean * AqTransmissMean * (zwt_cent - zwt_neig) * m_to_mm / lenMean
 
-    if (QLatDummy .ne. QLateral) write(*,*) "QLateral_Fan, QLateral_Theim", QLatDummy, QLateral
+    ! if (QLatDummy .ne. QLateral) write(*,*) "QLateral_Fan, QLateral_Theim", QLatDummy, QLateral
     ! write(*,*) 'QLatDummy, QLateral',QLatDummy, QLateral
     ! write(*,*) 'Trans_cent, Trans_neig',AqTransmiss_cent, AqTransmiss_neig
     ! write(*,*) 'gcellarea_cent, gcellarea_neig',gcellarea_cent, gcellarea_neig
