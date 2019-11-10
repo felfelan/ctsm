@@ -53,6 +53,7 @@ module GroundwaterMod
   use IrrigationMod     , only : irrigation_type
   use spmdMod           , only : iam, masterproc  ! FFelfelani: to get processor number
   use decompMod         , only : get_proc_global, get_proc_bounds, get_clump_bounds,get_proc_clumps  ! FFelfelani: to get number of gridcells
+  use clm_time_manager  , only : get_curr_date, get_nstep
   use SoilWaterRetentionCurveMod, only : soil_water_retention_curve_type
 
   ! !PUBLIC TYPES:
@@ -1328,14 +1329,14 @@ contains
     character(len=7)         , intent(in)    :: Diagonal
 
     ! !LOCAL VARIABLES:
-    integer             :: c,j,fc,i,g                                               ! indices
+    integer             :: c,j,fc,i,g, nstep                                               ! indices
     real(r8)            :: AqTransmissMean
     real(r8)            :: qchargeMean
     real(r8)            :: deltaxMean
     real(r8)            :: widMean
     real(r8)            :: cellareaMean
     real(r8)            :: lenMean
-    real(r8)            :: QLatDummy
+    real(r8)            :: QLatDummy, QLatDummy2
     real(r8), parameter :: km_to_mm    = 1.e6_r8
     real(r8), parameter :: km2_to_mm2  = 1.e12_r8
     real(r8), parameter :: mm_to_m     = 1.e-3_r8
@@ -1343,7 +1344,7 @@ contains
     real(r8), parameter :: HydroThresh = 0.1_r8
 
     !----------------------------------------------------------------------- 
-
+    nstep = get_nstep()
     AqTransmissMean = (AqTransmiss_cent + AqTransmiss_neig)/2._r8
     qchargeMean     = (qcharge_cent + qcharge_neig)/2._r8
     cellareaMean    = (gcellarea_cent + gcellarea_neig)/2._r8
@@ -1364,30 +1365,40 @@ contains
     ! Theim for the center cell; Fan lateral for the neighbor
     if (PumpWa_cent > 0._r8 .and. PumpWa_neig == 0._r8 .and. zwt_cent > zwt_neig) then
 
-        QLateral = SHR_CONST_PI * AqTransmissMean * (zwt_cent - zwt_neig) * m_to_mm / 4._r8 / log(1._r8 / 0.17803_r8) + &
-                   qchargeMean * SHR_CONST_PI * cellareaMean * km2_to_mm2 * (1._r8 - 0.17803_r8**2) / 16._r8 / log(1._r8 / 0.17803_r8) - &
-                   qchargeMean * SHR_CONST_PI * (0.17803_r8 * sqrt(cellareaMean) * km_to_mm)**2 / 8._r8
+        !QLateral = SHR_CONST_PI * AqTransmissMean * (zwt_cent - zwt_neig) * m_to_mm / 4._r8 / log(1._r8 / 0.17803_r8) + &
+        !           qchargeMean * SHR_CONST_PI * cellareaMean * km2_to_mm2 * (1._r8 - 0.17803_r8**2) / 16._r8 / log(1._r8 / 0.17803_r8) - &
+        !           qchargeMean * SHR_CONST_PI * (0.17803_r8 * sqrt(cellareaMean) * km_to_mm)**2 / 8._r8
+
+        QLateral = SHR_CONST_PI * AqTransmissMean * (zwt_cent - zwt_neig) * m_to_mm / 4._r8 / log(1._r8 / 0.17803_r8)
 
     ! Theim for the neighbor cell; Fan lateral for the center
     else if (PumpWa_cent == 0._r8 .and. PumpWa_neig > 0._r8 .and. zwt_cent < zwt_neig) then 
 
-        QLateral = -(SHR_CONST_PI * AqTransmissMean * (zwt_neig - zwt_cent) * m_to_mm / 4._r8 / log(1._r8 / 0.17803_r8) + &
-                   qchargeMean * SHR_CONST_PI * cellareaMean * km2_to_mm2 * (1._r8 - 0.17803_r8**2) / 16._r8 / log(1._r8 / 0.17803_r8) - &
-                   qchargeMean * SHR_CONST_PI * (0.17803_r8 * sqrt(cellareaMean) * km_to_mm)**2 / 8._r8) 
+        !QLateral = -(SHR_CONST_PI * AqTransmissMean * (zwt_neig - zwt_cent) * m_to_mm / 4._r8 / log(1._r8 / 0.17803_r8) + &
+        !           qchargeMean * SHR_CONST_PI * cellareaMean * km2_to_mm2 * (1._r8 - 0.17803_r8**2) / 16._r8 / log(1._r8 / 0.17803_r8) - &
+        !           qchargeMean * SHR_CONST_PI * (0.17803_r8 * sqrt(cellareaMean) * km_to_mm)**2 / 8._r8) 
+
+        QLateral = -(SHR_CONST_PI * AqTransmissMean * (zwt_neig - zwt_cent) * m_to_mm / 4._r8 / log(1._r8 / 0.17803_r8))
 
     ! Theim for the neighbor cell
     else if (PumpWa_cent > 0._r8 .and. PumpWa_neig > 0._r8 .and. zwt_cent < zwt_neig) then
 
-        QLateral = -(SHR_CONST_PI * AqTransmissMean * (zwt_neig - zwt_cent) * m_to_mm / 4._r8 / log(1._r8 / 0.17803_r8) + &
-                   qchargeMean * SHR_CONST_PI * cellareaMean * km2_to_mm2 * (1._r8 - 0.17803_r8**2) / 16._r8 / log(1._r8 / 0.17803_r8) - &
-                   qchargeMean * SHR_CONST_PI * (0.17803_r8 * sqrt(cellareaMean) * km_to_mm)**2 / 8._r8)  
+        !QLateral = -(SHR_CONST_PI * AqTransmissMean * (zwt_neig - zwt_cent) * m_to_mm / 4._r8 / log(1._r8 / 0.17803_r8) + &
+        !           qchargeMean * SHR_CONST_PI * cellareaMean * km2_to_mm2 * (1._r8 - 0.17803_r8**2) / 16._r8 / log(1._r8 / 0.17803_r8) - &
+        !           qchargeMean * SHR_CONST_PI * (0.17803_r8 * sqrt(cellareaMean) * km_to_mm)**2 / 8._r8)  
+
+
+        QLateral =-(SHR_CONST_PI * AqTransmissMean * (zwt_neig - zwt_cent) * m_to_mm / 4._r8 / log(1._r8 / 0.17803_r8))
 
     ! Theim for the center cell
     else if (PumpWa_cent > 0._r8 .and. PumpWa_neig > 0._r8 .and. zwt_cent > zwt_neig) then
 
-        QLateral = SHR_CONST_PI * AqTransmissMean * (zwt_cent - zwt_neig) * m_to_mm / 4._r8 / log(1._r8 / 0.17803_r8) + &
-                   qchargeMean * SHR_CONST_PI * cellareaMean * km2_to_mm2 * (1._r8 - 0.17803_r8**2) / 16._r8 / log(1._r8 / 0.17803_r8) - &
-                   qchargeMean * SHR_CONST_PI * (0.17803_r8 * sqrt(cellareaMean) * km_to_mm)**2 / 8._r8 
+        !QLateral = SHR_CONST_PI * AqTransmissMean * (zwt_cent - zwt_neig) * m_to_mm / 4._r8 / log(1._r8 / 0.17803_r8) + &
+        !           qchargeMean * SHR_CONST_PI * cellareaMean * km2_to_mm2 * (1._r8 - 0.17803_r8**2) / 16._r8 / log(1._r8 / 0.17803_r8) - &
+        !           qchargeMean * SHR_CONST_PI * (0.17803_r8 * sqrt(cellareaMean) * km_to_mm)**2 / 8._r8 
+
+
+        QLateral = SHR_CONST_PI * AqTransmissMean * (zwt_cent - zwt_neig) * m_to_mm / 4._r8 / log(1._r8 / 0.17803_r8)
 
     else
 
@@ -1396,9 +1407,10 @@ contains
     end if
     QLatDummy =  widMean * AqTransmissMean * (zwt_cent - zwt_neig) * m_to_mm / lenMean
 
-    ! if (QLatDummy .ne. QLateral) write(*,*) "QLateral_Fan, QLateral_Theim", QLatDummy, QLateral
+    !if (QLatDummy .ne. QLateral) write(*,*) "QLateral_Fan, QLateral_Theim", QLatDummy, QLateral
+    !if (nstep == 300 .and. (QLatDummy .ne. QLateral)) write(*,*) "QLateral_Fan, QLateral_Theim w/wo E", QLatDummy, QLateral, QLatDummy2
     ! write(*,*) 'QLatDummy, QLateral',QLatDummy, QLateral
-    ! write(*,*) 'Trans_cent, Trans_neig',AqTransmiss_cent, AqTransmiss_neig
+    ! write(*,*) 'Trans_cent, Trans_neig',AqTransmiss_cent, AqTransmiss_neig 
     ! write(*,*) 'gcellarea_cent, gcellarea_neig',gcellarea_cent, gcellarea_neig
     ! write(*,*) 'qcharge_cent, qcharge_neig', qcharge_cent, qcharge_neig
     ! write(*,*) 'PumpWa_cent, PumpWa_neig', PumpWa_cent, PumpWa_neig
