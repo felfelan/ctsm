@@ -38,6 +38,7 @@ module lnd2atmMod
   use LandunitType         , only : lun
   use GridcellType         , only : grc                
   use landunit_varcon      , only : istice_mec
+  use clm_time_manager     , only : get_curr_date, get_nstep
   !
   ! !PUBLIC TYPES:
   implicit none
@@ -157,7 +158,7 @@ contains
    real(r8)                    , intent(in)    :: net_carbon_exchange_grc( bounds%begg: )  ! net carbon exchange between land and atmosphere, positive for source (gC/m2/s)
    !
    ! !LOCAL VARIABLES:
-   integer  :: c, l, g  ! indices
+   integer  :: c, l, g, nstep  ! indices
    real(r8) :: qflx_ice_runoff_col(bounds%begc:bounds%endc) ! total column-level ice runoff
    real(r8) :: qflx_adjusted_irrig_col(bounds%begc:bounds%endc) ! total column-level adjusted irrigation
    real(r8) :: eflx_sh_ice_to_liq_grc(bounds%begg:bounds%endg) ! sensible heat flux generated from the ice to liquid conversion, averaged to gridcell
@@ -375,18 +376,23 @@ contains
          lnd2atm_inst%qflx_rofliq_drain_perched_grc(bounds%begg:bounds%endg), &
          c2l_scale_type= 'urbanf', l2g_scale_type='unity' )
 
-
-    !  we need to adjust qflx_irrig_col and remove the GW-fed part, then
+    qflx_adjusted_irrig_col(:) = 0._r8
+    !  we need to adjust qflx_irrig_col and remove the GW-fed part, then 
     !  send it to rof
+	nstep = get_nstep()
     do c = bounds%begc, bounds%endc
         l = col%landunit(c)
+        g = col%gridcell(c)
+		! if (nstep == 400 .and. c == 838456) write(*,*) 'lat, lon: ', grc%latdeg(g), grc%londeg(g)
         if ((lun%itype(l)==istsoil .or. lun%itype(l)==istcrop) .and. col%active(c)) then
              qflx_adjusted_irrig_col(c) = (1._r8 - GW_ratio(c)) * irrigation_inst%qflx_irrig_col(c)
+			 !if (nstep == 300 .and. (irrigation_inst%qflx_irrig_col(c) .ne. 0._r8)) write(*,*) 'c1, g, lat, lon: ', c, g, grc%latdeg(g), grc%londeg(g)
+			 !if (nstep == 300 .and. (irrigation_inst%qflx_irrig_col(c) .ne. 0._r8)) write(*,*) GW_ratio(c), irrigation_inst%qflx_irrig_col(c), qflx_adjusted_irrig_col(c)
         end if
     end do
 
     call c2g( bounds, &
-         qflx_adjusted_irrig_col (bounds%begc:bounds%endc), &
+         qflx_adjusted_irrig_col(bounds%begc:bounds%endc), &
          lnd2atm_inst%qirrig_grc(bounds%begg:bounds%endg), &
          c2l_scale_type= 'urbanf', l2g_scale_type='unity' )
 
