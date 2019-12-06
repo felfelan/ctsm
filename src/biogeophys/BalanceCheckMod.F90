@@ -10,7 +10,7 @@ module BalanceCheckMod
   use shr_log_mod        , only : errMsg => shr_log_errMsg
   use decompMod          , only : bounds_type
   use abortutils         , only : endrun
-  use clm_varctl         , only : iulog
+  use clm_varctl         , only : iulog, groundwater_scheme
   use clm_varcon         , only : namep, namec
   use clm_varpar         , only : nlevsoi
   use GetGlobalValuesMod , only : GetGlobalIndex
@@ -41,6 +41,15 @@ module BalanceCheckMod
   public :: BeginWaterBalance        ! Initialize water balance check
   public :: BalanceCheck             ! Water and energy balance check
 
+  
+  ! FFelfelani Comment: Groundwater Scheme
+  integer, parameter :: gw_default  = 0
+  integer, parameter :: gw_FanLat_Pump  = 1
+  integer, parameter :: gw_FanLat_TheimPump  = 2
+  integer, parameter :: gw_Theim_GleesonTransmiss  = 3
+  integer, parameter :: gw_Fan  = 4 
+  
+  
   character(len=*), parameter, private :: sourcefile = &
        __FILE__
   !-----------------------------------------------------------------------
@@ -143,6 +152,7 @@ contains
      integer  :: indexp,indexc,indexl,indexg            ! index of first found in search loop
      real(r8) :: forc_rain_col(bounds%begc:bounds%endc) ! column level rain rate [mm/s]
      real(r8) :: forc_snow_col(bounds%begc:bounds%endc) ! column level snow rate [mm/s]
+     character(*), parameter    :: subname = "('BalanceCheck')"
      !-----------------------------------------------------------------------
 
      associate(                                                                   & 
@@ -260,38 +270,81 @@ contains
        end do
 
        ! Water balance check
+       select case(groundwater_scheme)
 
-       do c = bounds%begc, bounds%endc
+          ! Groundwater scheme: Default
+          case(gw_default)
 
-          ! add qflx_drain_perched and qflx_flood
-          if (col%active(c)) then
-             ! there is already dtime multiplied in Pump_wa_col, so should be divided!
-             errh2o(c) = endwb(c) - begwb(c) &
-                  - (forc_rain_col(c)        &
-                  + forc_snow_col(c)         &
-                  + qflx_floodc(c)           &
-                  + qflx_irrig(c)            &
-                  - soilhydrology_inst%Pump_wa_col(c)&
-                  + soilhydrology_inst%Qgw_lateral_col(c) &
-                  + qflx_glcice_dyn_water_flux(c) &
-                  - qflx_evap_tot(c)         &
-                  - qflx_surf(c)             &
-                  - qflx_h2osfc_surf(c)      &
-                  - qflx_qrgwl(c)            &
-                  - qflx_drain(c)            &
-                  - qflx_drain_perched(c)    &
-                  - qflx_ice_runoff_snwcp(c) &
-                  - qflx_ice_runoff_xs(c)    &
-                  - qflx_snwcp_discarded_liq(c) &
-                  - qflx_snwcp_discarded_ice(c)) * dtime
+              do c = bounds%begc, bounds%endc
 
-          else
+                 ! add qflx_drain_perched and qflx_flood
+                 if (col%active(c)) then
+                    ! there is already dtime multiplied in Pump_wa_col, so should be divided!
+                    errh2o(c) = endwb(c) - begwb(c) &
+                         - (forc_rain_col(c)        &
+                         + forc_snow_col(c)         &
+                         + qflx_floodc(c)           &
+                         + qflx_irrig(c)            &
+                         - soilhydrology_inst%Pump_wa_col(c)&
+                         + qflx_glcice_dyn_water_flux(c) &
+                         - qflx_evap_tot(c)         &
+                         - qflx_surf(c)             &
+                         - qflx_h2osfc_surf(c)      &
+                         - qflx_qrgwl(c)            &
+                         - qflx_drain(c)            &
+                         - qflx_drain_perched(c)    &
+                         - qflx_ice_runoff_snwcp(c) &
+                         - qflx_ice_runoff_xs(c)    &
+                         - qflx_snwcp_discarded_liq(c) &
+                         - qflx_snwcp_discarded_ice(c)) * dtime
 
-             errh2o(c) = 0.0_r8
+                 else
 
-          end if
+                    errh2o(c) = 0.0_r8
+       
+                 end if
 
-       end do
+              end do
+
+          case(gw_FanLat_Pump, gw_FanLat_TheimPump, gw_Theim_GleesonTransmiss, gw_Fan)
+
+              do c = bounds%begc, bounds%endc
+
+                 ! add qflx_drain_perched and qflx_flood
+                 if (col%active(c)) then
+                    ! there is already dtime multiplied in Pump_wa_col, so should be divided!
+                    errh2o(c) = endwb(c) - begwb(c) &
+                         - (forc_rain_col(c)        &
+                         + forc_snow_col(c)         &
+                         + qflx_floodc(c)           &
+                         + qflx_irrig(c)            &
+                         - soilhydrology_inst%Pump_wa_col(c)&
+                         + soilhydrology_inst%Qgw_lateral_col(c) &
+                         + qflx_glcice_dyn_water_flux(c) &
+                         - qflx_evap_tot(c)         &
+                         - qflx_surf(c)             &
+                         - qflx_h2osfc_surf(c)      &
+                         - qflx_qrgwl(c)            &
+                         - qflx_drain(c)            &
+                         - qflx_drain_perched(c)    &
+                         - qflx_ice_runoff_snwcp(c) &
+                         - qflx_ice_runoff_xs(c)    &
+                         - qflx_snwcp_discarded_liq(c) &
+                         - qflx_snwcp_discarded_ice(c)) * dtime
+
+                 else
+
+                    errh2o(c) = 0.0_r8
+       
+                 end if
+
+              end do
+		  
+          case default
+             call endrun(subname // ':: the groundwater scheme must be specified !')
+
+       end select  ! case for the lower boundary condition		  
+	   
 
        found = .false.
        do c = bounds%begc, bounds%endc
