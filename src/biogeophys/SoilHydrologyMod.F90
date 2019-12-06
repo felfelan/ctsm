@@ -584,7 +584,7 @@ contains
      ! !USES:
      use clm_time_manager , only : get_step_size, get_prev_date, get_curr_date
      use clm_varcon       , only : pondmx, tfrz, watmin,denice,denh2o
-     use clm_varctl       , only : iulog
+     use clm_varctl       , only : iulog,use_pumping
      !use shr_sys_mod      , only : shr_sys_flush
      use clm_varpar       , only : nlevsoi
      use column_varcon    , only : icol_roof, icol_road_imperv
@@ -828,6 +828,11 @@ contains
           ! Groundwater scheme: Default
           case(gw_default)
             if (masterproc .and. secs == 0) write(iulog,*) 'This is gw_default groundwater scheme'
+            if (use_pumping == .true.) then
+                if (masterproc .and. secs == 0) write(iulog,*) 'This is gw_default with Pumping groundwater scheme'
+                call groundwater_inst%UpdateGWDefaultPump(bounds, num_hydrologyc, filter_hydrologyc,&
+                     soilhydrology_inst, soilstate_inst,waterstate_inst,irrigation_inst)
+            end if 
 
           ! Groundwater scheme: Theim Theory + Ying Fan Transmissivity 
           case(gw_FanLat_Pump)
