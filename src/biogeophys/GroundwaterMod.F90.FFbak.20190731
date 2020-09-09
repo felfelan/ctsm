@@ -1,0 +1,793 @@
+module GroundwaterMod
+
+  !-----------------------------------------------------------------------
+  ! !DESCRIPTION:
+  ! Calculates prognostic groundwater and Water Table Depth (WTD) considering pumping
+  ! and groundwater lateral flow
+  !
+  ! Usage:
+  !
+  !   - Call ... in order to compute ... 
+  !     . This should be called once per
+  !     timestep.
+  ! 
+  !   - Call ... in order to calculate ... This should be called
+  !     exactly ... per time step, 
+  !
+  !   - Access the timestep's ...
+  !
+  ! Design notes:
+  !
+  !   In principle, Theim equation is applied between r = r_e and r = dx (center to center of four
+  !   surrounding cells) to take into account the GW pumping.
+  !
+  !   Assumptions: The head across a given radius is constant (i.e., cone of depression is circular)
+  !
+  !   First Version: Farshid Felfelani 2019-03-01
+  !
+  ! HISTORY:
+  !
+  !   The communication between the neighbouring cells is adopted from a FORTRAN code 
+  !   simulating the tree mortality from GW wrote by Sam Levis   
+  !
+  ! !USES:
+#include "shr_assert.h"
+  use shr_kind_mod      , only : r8 => shr_kind_r8
+  use decompMod         , only : bounds_type, get_proc_global
+  use shr_log_mod       , only : errMsg => shr_log_errMsg
+  use abortutils        , only : endrun
+  use clm_varctl        , only : iulog
+  use clm_varcon        , only : isecspday, degpsec, denh2o, spval, namec, rpi
+  use clm_varpar        , only : nlevsoi, nlevgrnd
+  use clm_time_manager  , only : get_step_size
+  use SoilWaterRetentionCurveMod, only : soil_water_retention_curve_type
+  use GridcellType      , only : grc                
+  use ColumnType        , only : col
+  use PatchType         , only : patch                
+  use subgridAveMod     , only : p2c, c2g
+  use filterColMod      , only : filter_col_type, col_filter_from_logical_array
+  use SoilHydrologyType , only : soilhydrology_type  
+  use SoilStateType     , only : soilstate_type
+  use WaterfluxType     , only : waterflux_type
+  use WaterstateType    , only : waterstate_type
+  use IrrigationMod     , only : irrigation_type
+  use spmdMod           , only : iam  ! FFelfelani: to get processor number
+  use decompMod        , only : get_proc_global, get_proc_bounds, get_clump_bounds,get_proc_clumps  ! FFelfelani: to get number of gridcells
+  ! !PUBLIC TYPES:
+  implicit none
+  private
+  
+   type, public :: groundwater_type
+     private
+    contains
+   
+     ! Public routines
+     procedure, public :: UpdateGWTheim
+     ! public :: UpdateGWFanLateral
+
+     ! Private routines
+     procedure, private :: TransmissivityFromFan
+   end type groundwater_type 
+
+  character(len=*), parameter, private :: sourcefile = &
+       __FILE__
+  
+contains
+
+  ! ========================================================================
+  ! Infrastructure routines (initialization, restart, etc.)
+  ! ========================================================================
+  
+  !------------------------------------------------------------------------
+  subroutine UpdateGWTheim(this, bounds, num_hydrologyc, filter_hydrologyc, &
+        soilhydrology_inst, soilstate_inst,irrigation_inst)
+
+    ! !DESCRIPTION:
+    !   In principle, Theim equation is applied between 
+	!   r = r_e and r = dx (center to center of four
+    !   surrounding cells) to take into account the GW pumping.
+    !
+    !   Assumptions: The head across a given radius is constant 
+	!  (i.e., cone of depression is circular) 
+	
+    ! !USES:
+    use spmdMod         , only : MPI_REAL8, MPI_SUM, mpicom
+    use decompMod       , only : ldecomp, get_proc_global
+    use shr_const_mod   , only : SHR_CONST_PI
+    use GridcellType    , only : grc 
+	! get_proc_global: total gridcells, landunits, columns, patchs across all processors
+    ! get_proc_global(ng, nl, nc, np, nCohorts) --->  all the arguments are intent(out)
+	
+    ! !ARGUMENTS:
+    class(groundwater_type)  , intent(inout) :: this
+    type(bounds_type)        , intent(in)    :: bounds  
+    integer                  , intent(in)    :: num_hydrologyc       ! number of column soil points in column filter
+    integer                  , intent(in)    :: filter_hydrologyc(:) ! column filter for soil points
+    type(soilhydrology_type) , intent(inout) :: soilhydrology_inst
+    type(soilstate_type)     , intent(in)    :: soilstate_inst
+    type(irrigation_type)    , intent(in)    :: irrigation_inst	
+	
+    ! !LOCAL VARIABLES:	
+ 
+    character(len=32) :: subname = 'GroundwaterMod' ! subroutine name 
+    real(r8), pointer :: neighbors_count(:)         ! complete grid cell array of count
+    real(r8), pointer :: GW_sum_glob(:)             ! First term of Theim Theory
+    real(r8), pointer :: Theim2(:)                  ! Second term of Theim Theory
+    real(r8), pointer :: Theim3(:)                  ! Third term of Theim Theory
+
+    real(r8), pointer :: GW_out_long(:)             ! GW_out array for all grid cells
+    real(r8), pointer :: GW_out_glob(:)             ! complete grid cell array of GW_out
+    real(r8), pointer :: lodgepole_wtgcell_long(:)  ! same pair for...
+    real(r8), pointer :: lodgepole_wtgcell_glob(:)  ! ...lodgepole_wtgcell
+    real(r8), pointer :: AqTransmiss(:)             ! Transmissivity of the aquifer (mm^2/s)
+
+    real(r8), pointer :: G_lat_long(:)              ! latitude array for all grid cells
+    real(r8), pointer :: G_lon_long(:)              ! longitude array for all grid cells
+    real(r8), pointer :: G_lat_glob(:)
+    real(r8), pointer :: G_lon_glob(:)
+	
+    real(r8)          :: zwt_before
+    real(r8)          :: rous                       ! aquifer yield (-)
+    real(r8)          :: qcharge_tot
+    real(r8)          :: s_y
+    real(r8)          :: qcharge_layer
+    integer           :: jwt(bounds%begc:bounds%endc)            ! index of the soil layer right above the water table (-)
+
+	 
+    real(r8)          :: dtime           ! land model time step (sec)
+
+    integer, pointer :: g_ngbr_top(:)
+    integer, pointer :: g_ngbr_btm(:)
+    integer, pointer :: g_ngbr_lft(:)
+    integer, pointer :: g_ngbr_rgt(:)
+	
+    integer :: ng, nl, nc, np, nCohorts      ! total number of grid cells,landunits,columns,patches
+    integer :: p, g ,c, g_dummy              ! patch, gridcell, column indices
+    integer :: g_in, g_out, ii, jj, idx,gg   ! gridcell indices in/out cells
+    integer :: index_arr1(21)
+    integer :: ier                           ! error code
+    integer :: yr                            ! year
+    integer :: mon                           ! month
+    integer :: day                           ! day
+    integer :: tod                           ! seconds
+    integer :: j,fc,i                            
+    real    :: randarr(50)
+	integer :: randarrINT(50)                                             
+	                                         ! id ---> in-dispersing
+						                     ! od ---> out-dispersing
+
+    integer :: begg, endg       ! beginning and ending gridcell index of current proc
+    integer :: begl, endl       ! beginning and ending landunit index of current proc
+    integer :: begc, endc       ! beginning and ending column index of current proc
+    integer :: begp, endp       ! beginning and ending pft index of current proc
+											 
+    ! Conversion factors
+    real(r8), parameter :: km_to_mm   = 1.e6_r8
+    real(r8), parameter :: km2_to_mm2 = 1.e12_r8						   
+    real(r8), parameter :: mm_to_m    = 1.e-3_r8	
+	!-----------------------------------------------------------------------
+     associate(& 
+          !z                  =>    col%z                                 , & ! Input:  [real(r8) (:,:) ]  layer depth (m)                                 
+          zi                 =>    col%zi                                , & ! Input:  [real(r8) (:,:) ]  interface level below a "z" level (m)           
+          GW_ratio           =>    col%GW_ratio                          , & ! Input:  [real(r8) (:)   ]  USGS GW ratio as irrigation source                     
+                                               
+          qflx_irrig         =>    irrigation_inst%qflx_irrig_col        , & ! irrigation flux (mm H2O /s)
+		  
+          bsw                =>    soilstate_inst%bsw_col                , & ! Input:  [real(r8) (:,:) ]  Clapp and Hornberger "b"                        
+          hksat              =>    soilstate_inst%hksat_col              , & ! Input:  [real(r8) (:,:) ]  hydraulic conductivity at saturation (mm H2O /s)
+          sucsat             =>    soilstate_inst%sucsat_col             , & ! Input:  [real(r8) (:,:) ]  minimum soil suction (mm)                       
+          watsat             =>    soilstate_inst%watsat_col             , & ! Input:  [real(r8) (:,:) ]  volumetric soil water at saturation (porosity)  
+          eff_porosity       =>    soilstate_inst%eff_porosity_col       , & ! Input:  [real(r8) (:,:) ]  effective porosity = porosity - vol_ice         
+          clayP              =>    soilstate_inst%cellclay_col           , & ! Input:  [real(r8) (:,:) ] percent clay (0 < ~ < 100)-----> It is not a fraction!!!
+          hk_l               =>    soilstate_inst%hk_l_col               , & ! Input:  [real(r8) (:,:) ] hydraulic conductivity (mm/s) 
+		  
+          zwt                =>    soilhydrology_inst%zwt_col            , & ! Input and Output: [real(r8) (:)   ]  water table depth (m)                             
+          zwt_perched        =>    soilhydrology_inst%zwt_perched_col    , & ! Output: [real(r8) (:)   ]  perched water table depth (m)                     
+          frost_table        =>    soilhydrology_inst%frost_table_col    , & ! Output: [real(r8) (:)   ]  frost table depth (m)                             
+          wa                 =>    soilhydrology_inst%wa_col             , & ! Output: [real(r8) (:)   ]  water in the unconfined aquifer (mm)              
+          qcharge            =>    soilhydrology_inst%qcharge_col          & ! Input:  [real(r8) (:)   ]  aquifer recharge rate (mm/s)
+          )
+       !-----------------------------------------------
+	   
+       allocate(AqTransmiss(bounds%begc:bounds%endc))       		  
+ 
+       ! Initialize for the mpi_allreduce located between the out and
+       ! in loops
+       call get_proc_global(ng=ng, nl=nl, nc=nc, np=np, nCohorts=nCohorts)
+       ! Variables to gather from all PEs, while between the out and
+       ! in loops
+       allocate(GW_sum_glob(ng))
+       allocate(Theim2(nc))
+       allocate(Theim3(nc))
+       allocate(GW_out_long(ng))
+       allocate(GW_out_glob(ng))  
+       ! allocate(G_lat_long(ng))
+       ! allocate(G_lon_long(ng))	   
+       ! allocate(G_lat_glob(ng))
+       ! allocate(G_lon_glob(ng))	   
+	   
+       allocate(g_ngbr_top(ng))
+       allocate(g_ngbr_btm(ng))
+       allocate(g_ngbr_lft(ng))
+       allocate(g_ngbr_rgt(ng))	   
+	   
+       ! Initialize to 0 so as to MPI_SUM zeros in all PEs but one per grid cell
+	   ! FFELFELANI: the length is the total number of gridcell in the entire domain
+	   ! but only those cells taken care of each processor get value and the rest
+	   ! remain zero, finally mpi_allreduce would sum them up
+       GW_out_long(:) = 0._r8
+       ! G_lat_long(:)  = 0._r8
+       ! G_lon_long(:)  = 0._r8
+	   
+       ! Initialize to 1e36 to help make errors stand out
+       GW_out_glob(:) = 1.e36_r8
+       ! G_lat_glob(:) = 1.e36_r8
+       ! G_lon_glob(:) = 1.e36_r8
+	   
+       g_ngbr_top(:)  = 0
+       g_ngbr_btm(:)  = 0
+       g_ngbr_lft(:)  = 0
+       g_ngbr_rgt(:)  = 0
+	   
+       ! Initialize to 0 to sum correctly
+       GW_sum_glob(:) = 0._r8
+       Theim2(:)      = 0._r8
+       Theim3(:)      = 0._r8
+
+       call get_proc_bounds (begg, endg, begl, endl, begc, endc, begp, endp)
+
+       ! do g = begg,endg  ! first p loop: out
+
+          ! G_lat_long(g) = grc%latdeg(g)
+          ! G_lon_long(g) = grc%londeg(g)
+	   
+       ! end do  ! first p loop: out	  
+
+	   
+       do c = bounds%begc,bounds%endc  ! first p loop: out
+          g = col%gridcell(c)
+		  
+		  ! Saving for mpi_allreduce coming up between the do p loops
+          GW_out_long(g) = zwt(c)  ! GW_od goes to history
+
+       end do  ! first p loop: out	   
+
+	   
+       ! ------------------------------------------------
+       ! Between the out and in loops
+       ! all processors share all the relevant data needed to come up with GW_id
+       ! Could the same be done in if (iam == 0) followed by call mpi_bcast?
+       ! ------------------------------------------------
+
+       ! Gather GW_out_glob from GW_out_long, ultimately
+       !                  from GW_od
+
+       ! I do MPI_SUM because each processor only has values for the patch/clump its dealing
+       ! with and the rest of the array is zero   
+       call mpi_allreduce(GW_out_long, GW_out_glob, ng, &
+                          MPI_REAL8, MPI_SUM, mpicom, ier) 
+
+       ! call mpi_allreduce(G_lat_long, G_lat_glob, ng, &
+                          ! MPI_REAL8, MPI_SUM, mpicom, ier) 
+
+       ! call mpi_allreduce(G_lon_long, G_lon_glob, ng, &
+                          ! MPI_REAL8, MPI_SUM, mpicom, ier) 
+						  
+       ! From out GW (GW_out_glob) get in GW
+       ! (GW_id) by finding nearest neighbors with the help of ixy and jxy
+
+       allocate(neighbors_count(ng))
+       neighbors_count = 0._r8  ! initialize counter vector 
+
+       ! Loop to find all out GW' neighbors and
+       ! sum each out cell's neighbors' lodgepole pine weights so
+       ! that neighbors_count is the weighted sum of grid cells with lodgepole
+       ! pine > 0
+	   
+	   
+	   ! generating 50 random values between begg and endg of each processor  
+       call random_seed
+       call random_number(randarr)
+       randarrINT = floor(randarr*(endg-begg) + begg) + 1
+
+       ! if (iam == 0) then
+           ! write(*,*) 'begg, endg', begg, endg
+           ! write(*,*) 'randarrINT',	 randarrINT  
+       ! end if
+
+       do  gg = 1, size(randarrINT)
+          g_out = randarrINT(gg)
+       ! do  g_out = ng - 100, ng
+          ! if (GW_out_glob(g_out) > 0._r8) then
+             ! do g_in = 1, ng
+                ! identify neighbors with the ixy, jxy indices of grid cells
+                ! if (ldecomp%ixy(g_out) == ldecomp%ixy(g_in) - 1      .and.  &
+                    ! ldecomp%jxy(g_out) == ldecomp%jxy(g_in)) then
+					
+                    ! neighbors_count(g_out) = neighbors_count(g_out) + 1
+                    ! g_ngbr_rgt(g_out)      = g_in
+					
+                ! else if (ldecomp%ixy(g_out) == ldecomp%ixy(g_in)     .and.  &
+                    ! ldecomp%jxy(g_out) == ldecomp%jxy(g_in) + 1) then
+					
+                    ! neighbors_count(g_out) = neighbors_count(g_out) + 1
+                    ! g_ngbr_btm(g_out)      = g_in
+					
+                ! else if (ldecomp%ixy(g_out) == ldecomp%ixy(g_in) + 1 .and.  &
+                    ! ldecomp%jxy(g_out) == ldecomp%jxy(g_in)) then
+
+                    ! neighbors_count(g_out) = neighbors_count(g_out) + 1
+                    ! g_ngbr_lft(g_out)      = g_in
+					
+                ! else if (ldecomp%ixy(g_out) == ldecomp%ixy(g_in)     .and.  &
+                    ! ldecomp%jxy(g_out) == ldecomp%jxy(g_in) - 1) then
+					
+                    ! neighbors_count(g_out) = neighbors_count(g_out) + 1
+                    ! g_ngbr_top(g_out)      = g_in
+					
+                ! end if  ! find surrounding neighbors  
+             ! end do  ! g_in loop
+
+             if (iam == 0) then
+                 write(*,*) '                      '
+                 write(*,*) 'g_out, neighbors_count', g_out, ldecomp%gneighbors(g_out)
+                 write(*,*) 'ixy(g_out), jxy(g_out)',ldecomp%ixy(g_out), ldecomp%jxy(g_out)
+                 write(*,*) 'g_out_lat, g_out_lon', ldecomp%glat(g_out),ldecomp%glon(g_out)	
+
+                 if (ldecomp%gtop(g_out) <= ng .and. ldecomp%gtop(g_out) >= 1) then
+                    write(*,*) 'ldecomp%gtop(g_out)', ldecomp%gtop(g_out)
+				    write(*,*) 'ixy(g_top), jxy(g_top)', ldecomp%ixy(ldecomp%gtop(g_out)),ldecomp%jxy(ldecomp%gtop(g_out))
+				    write(*,*) 'g_top_lat, g_top_lon', ldecomp%glat(ldecomp%gtop(g_out)),ldecomp%glon(ldecomp%gtop(g_out))				 
+                 end if
+				 
+
+                 if (ldecomp%gbot(g_out) <= ng .and. ldecomp%gbot(g_out) >= 1) then
+                    write(*,*) 'ldecomp%gbot(g_out)', ldecomp%gbot(g_out)
+				    write(*,*) 'ixy(g_btm), jxy(g_btm)', ldecomp%ixy(ldecomp%gbot(g_out)),ldecomp%jxy(ldecomp%gbot(g_out))
+				    write(*,*) 'g_btm_lat, g_btm_lon', ldecomp%glat(ldecomp%gbot(g_out)),ldecomp%glon(ldecomp%gbot(g_out))				 
+                 end if
+
+
+
+                 if (ldecomp%glft(g_out) <= ng .and. ldecomp%glft(g_out) >= 1) then
+                    write(*,*) 'ldecomp%glft(g_out)', ldecomp%glft(g_out)
+				    write(*,*) 'ixy(g_lft), jxy(g_lft)', ldecomp%ixy(ldecomp%glft(g_out)),ldecomp%jxy(ldecomp%glft(g_out))
+				    write(*,*) 'g_lft_lat, g_lft_lon', ldecomp%glat(ldecomp%glft(g_out)),ldecomp%glon(ldecomp%glft(g_out))				 
+                 end if
+
+
+
+                 if (ldecomp%grgt(g_out) <= ng .and. ldecomp%grgt(g_out) >= 1) then
+                    write(*,*) 'ldecomp%grgt(g_out)', ldecomp%grgt(g_out)
+				    write(*,*) 'ixy(g_rgt), jxy(g_rgt)', ldecomp%ixy(ldecomp%grgt(g_out)),ldecomp%jxy(ldecomp%grgt(g_out))
+				    write(*,*) 'g_rgt_lat, g_rgt_lon', ldecomp%glat(ldecomp%grgt(g_out)),ldecomp%glon(ldecomp%grgt(g_out))				 
+                 end if				 
+
+             end if
+			 
+          ! end if  ! GW_od > 0
+          ! GW_id gets GW from its neighbors
+          ! Disperse GW from out cells to in cells
+          ! Weight out GW by lodgepole pine weights divided by
+          ! the neighbors_count sum
+          ! if (neighbors_count(g_out) > 0._r8) then
+             ! do g_in = 1, ng
+                ! if (ldecomp%ixy(g_out) == ldecomp%ixy(g_in) - 1 .and.  &
+                    ! ldecomp%jxy(g_out) == ldecomp%jxy(g_in)     .or. &
+
+                    ! ldecomp%ixy(g_out) == ldecomp%ixy(g_in)     .and.  &
+                    ! ldecomp%jxy(g_out) == ldecomp%jxy(g_in) + 1 .or. &
+
+
+                    ! ldecomp%ixy(g_out) == ldecomp%ixy(g_in) + 1 .and.  &
+                    ! ldecomp%jxy(g_out) == ldecomp%jxy(g_in)     .or. &
+
+
+                    ! ldecomp%ixy(g_out) == ldecomp%ixy(g_in)     .and.  &
+                    ! ldecomp%jxy(g_out) == ldecomp%jxy(g_in) - 1) then 
+
+                    
+                    ! GW_sum_glob(g_out) = GW_sum_glob(g_out) + GW_out_glob(g_in) / neighbors_count(g_out)				
+
+                ! end if  ! find surrounding neighbors
+             ! end do  ! g_in
+          ! end if  ! neighbors_count > 0      
+       end do  ! g_out loop
+
+       if (iam == 0) then
+           call endrun(subname // ':: Terminated!')
+       end if
+		   
+       ! call get_proc_global(numg,numl,numc,nump)
+       ! call get_proc_bounds (begg, endg, begl, endl, begc, endc, begp, endp)
+       ! nclumps = get_proc_clumps()
+       ! call get_clump_bounds (nclumps, begg_cl, endg_cl, begl_cl, endl_cl, begc_cl, endc_cl, begp_cl, endp_cl)
+
+       ! Farshid Felfelani: to print the processor number and the corresponding grid cells
+       ! if (iam == 0 .or. iam == 1 .or. iam == 538 .or. iam == 539) then
+         ! do ii = begg,endg
+            ! write(*,*) 'Processor Num: g, lat(g), lon(g)', iam, ii, grc%latdeg(ii), grc%londeg(ii)
+         ! end do
+       ! endif
+       ! write(*,*) 'Processor Num: g, lat(g), lon(g), clump gridcell range, Nclumps per proc, lat/lon begg_cl endg_cl', iam, g, grc%latdeg(g), grc%londeg(g), begg_cl, endg_cl, nclumps ,grc%latdeg(begg_cl), grc%londeg(begg_cl),grc%latdeg(endg_cl),grc%londeg(endg_cl)
+      
+       ! do g_out = 1, ng 
+          ! if (GW_out_glob(g_out) >= 0._r8) then
+             
+             ! jj = 1
+             ! do ii = -3 , 3, 1
+
+                ! index_arr1(jj)     = g_out - 1160 + ii
+                ! index_arr1(jj + 1) = g_out + ii
+                ! index_arr1(jj + 2) = g_out + 1160 + ii
+
+                ! jj = jj + 3
+             ! end do		  
+             ! write(*,*) 'Felfelani 1: g, index_arr1',g_out, index_arr1
+
+             ! do g_in = 1, size(index_arr1)
+                ! idx = min(max(index_arr1(g_in),1),ng)
+                ! identify neighbors with the ixy, jxy indices of grid cells
+                ! if (ldecomp%ixy(g_out) == ldecomp%ixy(idx) - 1 .and.  &
+                    ! ldecomp%jxy(g_out) == ldecomp%jxy(idx)     .or. &
+
+                    ! ldecomp%ixy(g_out) == ldecomp%ixy(idx)     .and.  &
+                    ! ldecomp%jxy(g_out) == ldecomp%jxy(idx) + 1 .or. &
+
+                    ! ldecomp%ixy(g_out) == ldecomp%ixy(idx) + 1 .and.  &
+                    ! ldecomp%jxy(g_out) == ldecomp%jxy(idx)     .or. &
+
+                    ! ldecomp%ixy(g_out) == ldecomp%ixy(idx)     .and.  &
+                    ! ldecomp%jxy(g_out) == ldecomp%jxy(idx) - 1) then
+
+                    ! neighbors_count(g_out) = neighbors_count(g_out) + 1
+
+                    ! write(*,*) 'Felfelani 2: g, neighbors_count(g_out)',g_out, neighbors_count(g_out)  
+                    ! write(*,*) 'Felfelani 3: g, ldecomp%ixy(g_out), ldecomp%jxy(g_out)',g_out,ldecomp%ixy(g_out), ldecomp%jxy(g_out)
+                    ! write(*,*) 'Felfelani 4: idx, ldecomp%ixy(idx), ldecomp%jxy(idx)',idx,ldecomp%ixy(idx), ldecomp%jxy(idx)
+
+                ! end if  ! find surrounding neighbors
+             ! end do  ! g_in loop
+
+             ! call endrun(subname // ':: Terminated!')
+			 
+          ! end if  ! GW_od > 0
+          ! GW_id gets GW from its neighbors
+          ! Disperse GW from out cells to in cells
+          ! Weight out GW by lodgepole pine weights divided by
+          ! the neighbors_count sum
+          ! if (neighbors_count(g_out) > 0._r8) then
+             ! do g_in = 1, size(index_arr1)
+                ! idx = min(max(index_arr1(g_in),1),ng)
+                ! if (ldecomp%ixy(g_out) == ldecomp%ixy(idx) - 1 .and.  &
+                    ! ldecomp%jxy(g_out) == ldecomp%jxy(idx)     .or. &
+
+                    ! ldecomp%ixy(g_out) == ldecomp%ixy(idx)     .and.  &
+                    ! ldecomp%jxy(g_out) == ldecomp%jxy(idx) + 1 .or. &
+
+
+                    ! ldecomp%ixy(g_out) == ldecomp%ixy(idx) + 1 .and.  &
+                    ! ldecomp%jxy(g_out) == ldecomp%jxy(idx)     .or. &
+
+
+                    ! ldecomp%ixy(g_out) == ldecomp%ixy(idx)     .and.  &
+                    ! ldecomp%jxy(g_out) == ldecomp%jxy(idx) - 1) then 
+
+                    
+                    ! GW_sum_glob(g_out) = GW_sum_glob(g_out) + GW_out_glob(idx) / neighbors_count(g_out) 			
+
+                ! end if  ! find surrounding neighbors
+             ! end do  ! g_in
+          ! end if  ! neighbors_count > 0      
+       ! end do  ! g_out loop
+
+	   
+       call mpi_barrier(mpicom,ier)
+
+       ! The layer index of the first unsaturated layer, i.e., the layer right above
+       ! the water table
+
+       dtime = get_step_size()
+
+       do fc = 1, num_hydrologyc
+          c = filter_hydrologyc(fc)
+          jwt(c) = nlevsoi
+          ! allow jwt to equal zero when zwt is in top layer 
+          do j = 1,nlevsoi
+             if(zwt(c) <= zi(c,j)) then
+                jwt(c) = j-1 
+                exit
+             end if
+          enddo
+       end do
+
+            ! Water table changes due to qcharge
+       do fc = 1, num_hydrologyc
+          c = filter_hydrologyc(fc)
+         ! use analytical expression for aquifer specific yield
+          rous = watsat(c,nlevsoi) &
+               * ( 1. - (1.+1.e3*zwt(c)/sucsat(c,nlevsoi))**(-1./bsw(c,nlevsoi)))
+          rous=max(rous,0.02_r8)
+
+               !--  water table is below the soil column  --------------------------------------
+          if(jwt(c) == nlevsoi) then             
+             wa(c)  = wa(c) + qcharge(c)  * dtime
+             zwt(c) = zwt(c) - (qcharge(c)  * dtime)/1000._r8/rous
+          else                                
+                  !-- water table within soil layers 1-9  -------------------------------------
+                  ! try to raise water table to account for qcharge
+             qcharge_tot = qcharge(c) * dtime
+             if(qcharge_tot > 0.) then !rising water table
+                do j = jwt(c)+1, 1,-1
+                        ! use analytical expression for specific yield
+                   s_y = watsat(c,j) &
+                        * ( 1. -  (1.+1.e3*zwt(c)/sucsat(c,j))**(-1./bsw(c,j)))
+                   s_y=max(s_y,0.02_r8)
+
+                   qcharge_layer=min(qcharge_tot,(s_y*(zwt(c) - zi(c,j-1))*1.e3))
+                   qcharge_layer=max(qcharge_layer,0._r8)
+
+                   if(s_y > 0._r8) zwt(c) = zwt(c) - qcharge_layer/s_y/1000._r8
+
+                   qcharge_tot = qcharge_tot - qcharge_layer
+                   if (qcharge_tot <= 0.) exit
+                enddo
+             else ! deepening water table (negative qcharge)
+                do j = jwt(c)+1, nlevsoi
+                        ! use analytical expression for specific yield
+                   s_y = watsat(c,j) &
+                        * ( 1. -  (1.+1.e3*zwt(c)/sucsat(c,j))**(-1./bsw(c,j)))
+                   s_y=max(s_y,0.02_r8)
+
+                   qcharge_layer=max(qcharge_tot,-(s_y*(zi(c,j) - zwt(c))*1.e3))
+                   qcharge_layer=min(qcharge_layer,0._r8)
+                   qcharge_tot = qcharge_tot - qcharge_layer
+                   if (qcharge_tot >= 0.) then 
+                      zwt(c) = zwt(c) - qcharge_layer/s_y/1000._r8
+                      exit
+                   else
+                      zwt(c) = zi(c,j)
+                   endif
+
+                enddo
+                if (qcharge_tot > 0.) zwt(c) = zwt(c) - qcharge_tot/1000._r8/rous
+             endif
+
+                  !-- recompute jwt for following calculations  ---------------------------------
+                  ! allow jwt to equal zero when zwt is in top layer
+             jwt(c) = nlevsoi
+             do j = 1,nlevsoi
+                if(zwt(c) <= zi(c,j)) then
+                   jwt(c) = j-1
+                   exit 
+                end if
+             enddo
+          endif
+       enddo
+
+
+	   
+			
+       ! AqTransmiss = this%TransmissivityFromFan(bounds, num_hydrologyc, filter_hydrologyc, soilstate_inst, soilhydrology_inst)	   
+
+       !g_dummy = -999 
+       ! do fc = 1, num_hydrologyc
+          ! c = filter_hydrologyc(fc)
+          ! g = col%gridcell(c)
+
+          !zwt_before = zwt(c)
+          ! Theim2(c) = ((GW_ratio(c) * qflx_irrig(c) * col%wtgcell(c) * grc%area(g) * km2_to_mm2) / (2 * SHR_CONST_PI * AqTransmiss(c)) + &
+                      ! (qcharge(c) * (0.208_r8 * sqrt(col%wtgcell(c) * grc%area(g)) * km_to_mm)**2/(2 * AqTransmiss(c)))) * log(1/0.208_r8) * mm_to_m
+
+          ! Theim3(c) = - (qcharge(c) * col%wtgcell(c) * grc%area(g) * km2_to_mm2 * (1-0.208_r8**2)/(4 * AqTransmiss(c))) * mm_to_m
+
+
+               ! use analytical expression for aquifer specific yield
+          ! rous = watsat(c,nlevsoi) &
+               ! * ( 1. - (1.+1.e3*zwt(c)/sucsat(c,nlevsoi))**(-1./bsw(c,nlevsoi)))
+          ! rous=max(rous,0.02_r8)
+
+          !--  water table is below the soil column  --------------------------------------
+          ! if(jwt(c) == nlevsoi) then             
+             ! wa(c)  = wa(c) + qcharge(c)  * dtime
+             ! zwt(c) = zwt(c) - (qcharge(c)  * dtime)/1000._r8/rous
+          ! else                                
+             !-- water table within soil layers 1-9  -------------------------------------
+             ! try to raise water table to account for qcharge
+             ! qcharge_tot = qcharge(c) * dtime
+             ! if(qcharge_tot > 0.) then !rising water table
+                ! do j = jwt(c)+1, 1,-1
+                   ! use analytical expression for specific yield
+                   ! s_y = watsat(c,j) &
+                        ! * ( 1. -  (1.+1.e3*zwt(c)/sucsat(c,j))**(-1./bsw(c,j)))
+                   ! s_y=max(s_y,0.02_r8)
+
+                   ! qcharge_layer=min(qcharge_tot,(s_y*(zwt(c) - zi(c,j-1))*1.e3))
+                   ! qcharge_layer=max(qcharge_layer,0._r8)
+
+                   ! if(s_y > 0._r8) zwt(c) = zwt(c) - qcharge_layer/s_y/1000._r8
+
+                   ! qcharge_tot = qcharge_tot - qcharge_layer
+                   ! if (qcharge_tot <= 0.) exit
+                ! enddo
+             ! else ! deepening water table (negative qcharge)
+                ! do j = jwt(c)+1, nlevsoi
+                   ! use analytical expression for specific yield
+                   ! s_y = watsat(c,j) &
+                        ! * ( 1. -  (1.+1.e3*zwt(c)/sucsat(c,j))**(-1./bsw(c,j)))
+                   ! s_y=max(s_y,0.02_r8)
+
+                   ! qcharge_layer=max(qcharge_tot,-(s_y*(zi(c,j) - zwt(c))*1.e3))
+                   ! qcharge_layer=min(qcharge_layer,0._r8)
+                   ! qcharge_tot = qcharge_tot - qcharge_layer
+                   ! if (qcharge_tot >= 0.) then 
+                      ! zwt(c) = zwt(c) - qcharge_layer/s_y/1000._r8
+                      ! exit
+                   ! else
+                      ! zwt(c) = zi(c,j)
+                   ! endif
+
+                ! enddo
+                ! if (qcharge_tot > 0.) zwt(c) = zwt(c) - qcharge_tot/1000._r8/rous
+             ! endif
+
+             ! -- recompute jwt for following calculations  ---------------------------------
+             ! allow jwt to equal zero when zwt is in top layer
+             ! jwt(c) = nlevsoi
+             ! do j = 1,nlevsoi
+                ! if(zwt(c) <= zi(c,j)) then
+                   ! jwt(c) = j-1
+                   ! exit 
+                ! end if
+             ! enddo
+          ! endif
+		  
+
+       ! end do
+	   
+	   
+       deallocate(neighbors_count)
+       deallocate(GW_sum_glob)
+       deallocate(Theim2)
+       deallocate(Theim3)
+       deallocate(GW_out_long)
+       deallocate(GW_out_glob)
+       deallocate(AqTransmiss)
+
+       ! deallocate(G_lat_long)
+       ! deallocate(G_lon_long)
+       ! deallocate(G_lat_glob)
+       ! deallocate(G_lon_glob)
+	   
+       deallocate(g_ngbr_top)
+       deallocate(g_ngbr_btm)
+       deallocate(g_ngbr_lft)
+       deallocate(g_ngbr_rgt)	  
+	   
+
+     end associate
+  end subroutine UpdateGWTheim
+
+  !-----------------------------------------------------------------------
+
+  !subroutine UpdateGWFanLateral(this, bounds, &)
+
+  !end subroutine UpdateGWFanLateral
+
+  !-----------------------------------------------------------------------
+
+  function TransmissivityFromFan(this, bounds, num_hydrologyc, filter_hydrologyc, &
+                                 soilstate_inst, soilhydrology_inst) &
+    result(Transmiss)
+
+    ! !DESCRIPTION:
+    !  Calculating the transmissivity based on the Fan et al. (2007)
+    !  and Zeng et al. (2016)
+
+    ! !ARGUMENTS:
+    class(groundwater_type)  , intent(in)    :: this
+    type(bounds_type)        , intent(in)    :: bounds
+    integer                  , intent(in)    :: num_hydrologyc       ! number of column soil points in column filter
+    integer                  , intent(in)    :: filter_hydrologyc(:) ! column filter for soil points
+    type(soilstate_type)     , intent(in)    :: soilstate_inst
+    type(soilhydrology_type) , intent(in)    :: soilhydrology_inst
+
+    ! !LOCAL VARIABLES:
+    integer  :: c,j,fc,i,g,l,g_dummy                         ! indices
+    real(r8) :: e_folding_length
+    real(r8) :: Transmiss(bounds%begc:bounds%endc)           ! Transmissivity of the aquifer (mm^2/s)
+    real(r8) :: beta_rad                                     ! terrain slope (rad)
+    integer  :: jwt2(bounds%begc:bounds%endc)                ! index of the soil layer right above the water table (-)
+	
+    real(r8), parameter :: m_to_mm = 1.e3_r8	     
+
+    associate(                                                            & 	
+        ! z                  =>    col%z                                 , & ! Input:  [real(r8) (:,:) ] layer depth (m)                                 
+          zi                 =>    col%zi                                , & ! Input:  [real(r8) (:,:) ] interface level below a "z" level (m)           
+          dz                 =>    col%dz                                , & ! Input:  [real(r8) (:,:) ] layer depth (m)  
+
+          hksat               =>    soilstate_inst%hksat_col              , & ! Input:  [real(r8) (:,:) ]  hydraulic conductivity at saturation (mm H2O /s)
+        ! hk_l               =>    soilstate_inst%hk_l_col               , & ! Input:  [real(r8) (:,:) ] hydraulic conductivity (mm/s)                    
+          clayP              =>    soilstate_inst%cellclay_col           , & ! Input:  [real(r8) (:,:) ] percent clay (0 < ~ < 100)-----> It is not a fraction!!!
+          zwt                =>    soilhydrology_inst%zwt_col              & ! Input: [real(r8) (:)   ]  water table depth (m)
+          )
+    !-----------------------------------------------------------------------
+
+    ! The layer index of the first unsaturated layer, i.e., the layer right above
+    ! the water table
+    do fc = 1, num_hydrologyc
+       c = filter_hydrologyc(fc)
+       jwt2(c) = 100 ! arbitrarily 100 for water table below the soil column 
+       ! allow jwt2 to equal zero when zwt is in top layer
+       do j = 1,nlevsoi
+          if(zwt(c) <= zi(c,j)) then
+             jwt2(c) = j
+             exit
+          end if
+       enddo
+    end do
+
+    g_dummy = -999
+    Transmiss(:) = 0._r8
+    do fc = 1, num_hydrologyc
+       c = filter_hydrologyc(fc)
+       g = col%gridcell(c)
+       l = col%landunit(c)
+
+       ! Zeng et al.(2018): e_folding_length (m) calculations for bedrock	 
+       !beta_rad = (rpi/180.) * col%topo_slope(c)
+       !if (beta_rad <= 0.16) then
+       !    e_folding_length = 20._r8/(1._r8 + 125._r8*beta_rad)
+       !else if (beta_rad > 0.16) then
+       !    e_folding_length = 1._r8
+       !end if
+
+       ! Fan et al.(2007): e_folding_length (m) calculations for regolith
+       beta_rad = (rpi/180.) * col%topo_slope(c)
+       if (beta_rad <= 0.16) then
+           e_folding_length = 120._r8/(1._r8 + 150._r8*beta_rad)
+       else if (beta_rad > 0.16) then
+           e_folding_length = 5._r8
+       end if
+
+
+	   
+       if (jwt2(c) < nlevsoi) then
+          Transmiss(c) = clayP(c,jwt2(c)) * hksat(c,jwt2(c)) * (zi(c,jwt2(c))-zwt(c)) * m_to_mm
+          do j = jwt2(c)+1,nlevsoi
+             Transmiss(c) = Transmiss(c) + clayP(c,j) * hksat(c,j) * dz(c,j) * m_to_mm
+          end do
+          Transmiss(c) = Transmiss(c) + clayP(c,nlevsoi) * hksat(c,nlevsoi) * e_folding_length * m_to_mm
+
+       else if (jwt2(c) .eq. nlevsoi) then
+          Transmiss(c) = clayP(c,nlevsoi) * hksat(c,nlevsoi) * (zi(c,nlevsoi)-zwt(c)) * m_to_mm &
+                         + clayP(c,nlevsoi) * hksat(c,nlevsoi) * e_folding_length * m_to_mm
+
+       else if (jwt2(c) .eq. 100) then
+          Transmiss(c) = clayP(c,nlevsoi) * hksat(c,nlevsoi) * e_folding_length * m_to_mm &
+                         * exp((zi(c,nlevsoi)-zwt(c))/e_folding_length)
+       end if
+
+       !if (grc%latdeg(g) < 22.0 .and. grc%latdeg(g) > 21.0 .and. grc%londeg(g) < 243.0 .and. grc%londeg(g) > 242.0) then
+
+       !if (Transmiss(c) .le. 1.0 .and. g .ne. g_dummy) then
+       !    g_dummy = g
+	   
+       if ((c .eq. 1662431) .or. (c .eq. 1486770) .or. (c .eq. 1398102)) then
+           write(*,*)  '--------------------------------------------------------------' 
+           write(*,*)  'Felfelani Transmiss: Processor Num, g, c, lat(g), lon(g), grc%area(g)' 
+           write(*,*)   iam, g, c, grc%latdeg(g), grc%londeg(g), grc%area(g)
+           write(*,*)  'Transmiss(c), clayP(c,1), clayP(c,nlevsoi), hksat(c,1), hksat(c,nlevsoi)' 
+           write(*,*)   Transmiss(c), clayP(c,1), clayP(c,nlevsoi), hksat(c,1), hksat(c,nlevsoi) 
+           write(*,*)  'e_folding_length,zi(c,nlevsoi),zwt(c),beta_rad,col%topo_slope(c)'
+           write(*,*)   e_folding_length,zi(c,nlevsoi),zwt(c),beta_rad,col%topo_slope(c)
+           write(*,*)  '--------------------------------------------------------------'
+       end if 
+
+    end do
+    end associate
+  end function TransmissivityFromFan
+
+
+
+end module GroundwaterMod
