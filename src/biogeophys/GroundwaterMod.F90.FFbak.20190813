@@ -1,0 +1,1049 @@
+module GroundwaterMod
+
+  !-----------------------------------------------------------------------
+  ! !DESCRIPTION:
+  ! Calculates prognostic groundwater and Water Table Depth (WTD) considering pumping
+  ! and groundwater lateral flow
+  !
+  ! Usage:
+  !
+  !   - Call ... in order to compute ... 
+  !     . This should be called once per
+  !     timestep.
+  ! 
+  !   - Call ... in order to calculate ... This should be called
+  !     exactly ... per time step, 
+  !
+  !   - Access the timestep's ...
+  !
+  ! Design notes:
+  !
+  !   In principle, Theim equation is applied between r = r_e and r = dx (center to center of four
+  !   surrounding cells) to take into account the GW pumping.
+  !
+  !   Assumptions: The head across a given radius is constant (i.e., cone of depression is circular)
+  !
+  !   First Version: Farshid Felfelani 2019-03-01
+  !
+  ! HISTORY:
+  !
+  !   The communication between the neighbouring cells is adopted from a FORTRAN code 
+  !   simulating the tree mortality from GW wrote by Sam Levis   
+  !
+  ! !USES:
+#include "shr_assert.h"
+  use shr_kind_mod      , only : r8 => shr_kind_r8
+  use decompMod         , only : bounds_type, get_proc_global
+  use shr_log_mod       , only : errMsg => shr_log_errMsg
+  use abortutils        , only : endrun
+  use clm_varctl        , only : iulog
+  use clm_varcon        , only : isecspday, degpsec, denh2o, spval, namec, rpi
+  use clm_varpar        , only : nlevsoi, nlevgrnd
+  use SoilWaterRetentionCurveMod, only : soil_water_retention_curve_type
+  use GridcellType      , only : grc                
+  use ColumnType        , only : col
+  use PatchType         , only : patch                
+  use subgridAveMod     , only : p2c, c2g
+  use filterColMod      , only : filter_col_type, col_filter_from_logical_array
+  use SoilHydrologyType , only : soilhydrology_type  
+  use SoilStateType     , only : soilstate_type
+  use WaterfluxType     , only : waterflux_type
+  use WaterstateType    , only : waterstate_type
+  use IrrigationMod     , only : irrigation_type
+  use spmdMod           , only : iam, masterproc  ! FFelfelani: to get processor number
+  use decompMod        , only : get_proc_global, get_proc_bounds, get_clump_bounds,get_proc_clumps  ! FFelfelani: to get number of gridcells
+  ! !PUBLIC TYPES:
+  implicit none
+  private
+  
+   type, public :: groundwater_type
+     private
+    contains
+   
+     ! Public routines
+     procedure, public :: UpdateGWTheim
+     procedure, public :: UpdateGWFanLateral
+
+     ! Private routines
+     procedure, private :: TransmissivityFromFan
+   end type groundwater_type 
+
+  character(len=*), parameter, private :: sourcefile = &
+       __FILE__
+  
+contains
+
+  ! ========================================================================
+  ! Infrastructure routines (initialization, restart, etc.)
+  ! ========================================================================
+  
+  !------------------------------------------------------------------------
+  subroutine UpdateGWTheim(this, bounds, num_hydrologyc, filter_hydrologyc, &
+        soilhydrology_inst, soilstate_inst,irrigation_inst)
+
+    ! !DESCRIPTION:
+    !   In principle, Theim equation is applied between 
+    !   r = r_e and r = dx (center to center of four
+    !   surrounding cells) to take into account the GW pumping.
+    !
+    !   Assumptions: The head across a given radius is constant 
+    !  (i.e., cone of depression is circular) 
+
+    ! !USES:
+    use spmdMod         , only : MPI_REAL8, MPI_SUM, mpicom, MPI_INTEGER
+    use decompMod       , only : ldecomp, get_proc_global
+    use shr_const_mod   , only : SHR_CONST_PI
+    use GridcellType    , only : grc
+    use clm_time_manager, only : get_step_size, get_curr_date
+    ! get_proc_global: total gridcells, landunits, columns, patchs across all processors
+    ! get_proc_global(ng, nl, nc, np, nCohorts) --->  all the arguments are intent(out)
+
+    ! !ARGUMENTS:
+    class(groundwater_type)  , intent(inout) :: this
+    type(bounds_type)        , intent(in)    :: bounds  
+    integer                  , intent(in)    :: num_hydrologyc       ! number of column soil points in column filter
+    integer                  , intent(in)    :: filter_hydrologyc(:) ! column filter for soil points
+    type(soilhydrology_type) , intent(inout) :: soilhydrology_inst
+    type(soilstate_type)     , intent(in)    :: soilstate_inst
+    type(irrigation_type)    , intent(in)    :: irrigation_inst	
+
+    ! !LOCAL VARIABLES:	
+ 
+    character(len=32) :: subname = 'GroundwaterMod' ! subroutine name 
+    real(r8), pointer :: neighbors_count(:)         ! complete grid cell array of count
+    real(r8), pointer :: zwt_neiSum_glob(:)             ! First term of Theim Theory
+    real(r8), pointer :: Theim2(:)                  ! Second term of Theim Theory
+    real(r8), pointer :: Theim3(:)                  ! Third term of Theim Theory
+
+    real(r8), pointer :: zwt_long(:)                ! GW_out array for all grid cells
+    real(r8), pointer :: zwt_glob(:)                ! complete grid cell array of GW_out
+    real(r8), pointer :: g_totCweight(:), g_totCweight_glob(:)
+    real(r8), pointer :: Dzwt1_glob(:)              ! Delta ZWT between each cell and the mean of 4 neighbours before Theim
+    real(r8), pointer :: Dzwt2(:), Dzwt2_glob(:)    ! Delta ZWT between each cell and the mean of 4 neighbours after Theim
+    real(r8), pointer :: Ddelta_long(:), Ddelta_glob(:) ! Delta2 - Delta1
+    real(r8), pointer :: g_watsat_long(:), g_sucst_long(:)
+    real(r8), pointer :: g_bsw_long(:), g_cellarea_long(:), g_cellarea_glob(:)
+    real(r8), pointer :: qirrig_long(:), qirrig_glob(:)
+    real(r8), pointer :: GW_ratio_long(:), GW_ratio_glob(:)
+    real(r8), pointer :: Theim2_long(:), Theim2_glob(:)
+    real(r8), pointer :: Theim3_long(:), Theim3_glob(:)
+    real(r8), pointer :: lodgepole_wtgcell_long(:)  ! same pair for...
+    real(r8), pointer :: lodgepole_wtgcell_glob(:)  ! ...lodgepole_wtgcell
+    real(r8), pointer :: AqTransmiss(:)             ! Transmissivity of the aquifer (mm^2/s)
+
+    real(r8)          :: zwt_before
+    real(r8)          :: rous, aRatio               ! aquifer yield (-); area ratio of center/neighbor
+    real(r8)          :: qcharge_tot
+    real(r8)          :: s_y, dummysum
+    real(r8)          :: qcharge_layer
+    integer           :: jwt(bounds%begc:bounds%endc)            ! index of the soil layer right above the water table (-)
+    real(r8)          :: dtime           ! land model time step (sec)
+
+    integer, pointer :: ZeroHydroCell(:)          ! cells that have no hydrological columns
+    integer, pointer :: ZeroHydroCell_glob(:)     ! global cells that have no hydrological columns
+	
+    integer :: ng, nl, nc, np, nCohorts      ! total number of grid cells,landunits,columns,patches
+    integer :: p, g ,c, g_dummy              ! patch, gridcell, column indices
+    integer :: g_in, g_out, ii, jj, idx,gg   ! gridcell indices in/out cells
+    integer :: ier                           ! error code
+    integer :: yr                            ! year
+    integer :: mon                           ! month
+    ! integer :: day                           ! day
+    integer :: tod                           ! seconds
+    integer :: j,fc,i
+
+    integer :: begg, endg       ! beginning and ending gridcell index of current proc
+    integer :: begl, endl       ! beginning and ending landunit index of current proc
+    integer :: begc, endc       ! beginning and ending column index of current proc
+    integer :: begp, endp       ! beginning and ending pft index of current proc
+
+    integer :: year       ! year (0, ...) for nstep
+    integer :: month      ! month (1, ..., 12) for nstep
+    integer :: day        ! day of month (1, ..., 31) for nstep
+    integer :: secs       ! seconds into current date for nstep
+    ! Conversion factors
+    real(r8), parameter :: km_to_mm   = 1.e6_r8
+    real(r8), parameter :: km2_to_mm2 = 1.e12_r8
+    real(r8), parameter :: mm_to_m    = 1.e-3_r8
+    real(r8), parameter :: m_to_mm    = 1.e3_r8
+    !-----------------------------------------------------------------------
+     associate(& 
+          !z                  =>    col%z                                 , & ! Input:  [real(r8) (:,:) ]  layer depth (m)                                 
+          zi                 =>    col%zi                                , & ! Input:  [real(r8) (:,:) ]  interface level below a "z" level (m)           
+          GW_ratio           =>    col%GW_ratio                          , & ! Input:  [real(r8) (:)   ]  USGS GW ratio as irrigation source                     
+                                               
+          qflx_irrig         =>    irrigation_inst%qflx_irrig_col        , & ! irrigation flux (mm H2O /s)
+
+          bsw                =>    soilstate_inst%bsw_col                , & ! Input:  [real(r8) (:,:) ]  Clapp and Hornberger "b"                        
+          hksat              =>    soilstate_inst%hksat_col              , & ! Input:  [real(r8) (:,:) ]  hydraulic conductivity at saturation (mm H2O /s)
+          sucsat             =>    soilstate_inst%sucsat_col             , & ! Input:  [real(r8) (:,:) ]  minimum soil suction (mm)                       
+          watsat             =>    soilstate_inst%watsat_col             , & ! Input:  [real(r8) (:,:) ]  volumetric soil water at saturation (porosity)  
+          eff_porosity       =>    soilstate_inst%eff_porosity_col       , & ! Input:  [real(r8) (:,:) ]  effective porosity = porosity - vol_ice         
+          clayP              =>    soilstate_inst%cellclay_col           , & ! Input:  [real(r8) (:,:) ] percent clay (0 < ~ < 100)-----> It is not a fraction!!!
+          hk_l               =>    soilstate_inst%hk_l_col               , & ! Input:  [real(r8) (:,:) ] hydraulic conductivity (mm/s) 
+
+          zwt                =>    soilhydrology_inst%zwt_col            , & ! Input and Output: [real(r8) (:)   ]  water table depth (m)                             
+          zwt_perched        =>    soilhydrology_inst%zwt_perched_col    , & ! Output: [real(r8) (:)   ]  perched water table depth (m)                     
+          frost_table        =>    soilhydrology_inst%frost_table_col    , & ! Output: [real(r8) (:)   ]  frost table depth (m)                             
+          wa                 =>    soilhydrology_inst%wa_col             , & ! Output: [real(r8) (:)   ]  water in the unconfined aquifer (mm)              
+          qcharge            =>    soilhydrology_inst%qcharge_col          & ! Input:  [real(r8) (:)   ]  aquifer recharge rate (mm/s)
+          )
+       !-----------------------------------------------
+       dtime = get_step_size()
+       call get_curr_date (year, month, day, secs)
+       ! if (masterproc) then
+       if (iam == 200) then
+          write(*,*) 'year, month, day, secs, dtime, ', year, month, day, secs, dtime
+       end if
+
+       allocate(AqTransmiss(bounds%begc:bounds%endc))       		  
+ 
+       ! Initialize for the mpi_allreduce located between the out and 
+       ! in loops
+       call get_proc_global(ng=ng, nl=nl, nc=nc, np=np, nCohorts=nCohorts)
+       ! Variables to gather from all PEs, while between the out and 
+       ! in loops
+       allocate(zwt_neiSum_glob(ng))
+       allocate(Theim2(nc))
+       allocate(Theim3(nc))
+       allocate(zwt_long(ng))
+       allocate(zwt_glob(ng))
+       allocate(Dzwt1_glob(ng))
+       allocate(Dzwt2(ng))
+       allocate(Dzwt2_glob(ng))
+       allocate(Ddelta_long(ng))
+       allocate(Ddelta_glob(ng))
+       allocate(g_totCweight(ng))
+       allocate(g_totCweight_glob(ng))
+       allocate(ZeroHydroCell(ng))
+       allocate(ZeroHydroCell_glob(ng))
+       allocate(g_watsat_long(ng))
+       allocate(g_sucst_long(ng))
+       allocate(g_bsw_long(ng))
+       allocate(neighbors_count(ng))
+       allocate(g_cellarea_long(ng))
+       allocate(g_cellarea_glob(ng))
+       allocate(qirrig_long(ng))
+       allocate(qirrig_glob(ng))
+       allocate(GW_ratio_long(ng))
+       allocate(GW_ratio_glob(ng))
+       allocate(Theim2_long(ng))
+       allocate(Theim2_glob(ng))
+       allocate(Theim3_long(ng))
+       allocate(Theim3_glob(ng))
+       ! Initialize to 0 so as to MPI_SUM zeros in all PEs but one per grid cell
+       ! FFELFELANI: the length is the total number of gridcell in the entire domain
+       ! but only those cells taken care of each processor get value and the rest
+       ! remain zero, finally mpi_allreduce would sum them up
+       zwt_long(:)           = 0._r8
+       g_totCweight(:)       = 0._r8
+       g_watsat_long(:)      = 0._r8
+       g_sucst_long(:)       = 0._r8
+       g_bsw_long(:)         = 0._r8
+       Dzwt1_glob(:)         = 0._r8
+       Dzwt2(:)              = 0._r8
+       Ddelta_long(:)        = 0._r8
+       ZeroHydroCell(:)      = 0
+       ZeroHydroCell_glob(:) = 10000
+       neighbors_count(:)    = 0._r8
+       g_cellarea_long(:)    = 0._r8
+       qirrig_long(:)        = 0._r8
+       GW_ratio_long(:)      = 0._r8
+       Theim2_long(:)        = 0._r8
+       Theim3_long(:)        = 0._r8
+       ! Initialize to 1e36 to help make errors stand out
+       zwt_glob(:)           = 1.e36_r8
+       Ddelta_glob(:)        = 1.e36_r8
+       Dzwt2_glob(:)         = 1.e36_r8
+       qirrig_glob(:)        = 1.e36_r8
+       g_cellarea_glob(:)    = 1.e36_r8
+       GW_ratio_glob(:)      = 1.e36_r8
+       g_totCweight_glob(:)  = 1.e36_r8
+       Theim2_glob(:)        = 1.e36_r8
+       Theim3_glob(:)        = 1.e36_r8
+       ! Initialize to 0 to sum correctly
+       zwt_neiSum_glob(:)    = 0._r8
+       Theim2(:)             = 0._r8
+       Theim3(:)             = 0._r8
+
+       ! To get the weighted average ZWT accross all columns within each cell
+       ! loop over the columns that each processor handles
+       ! do c = bounds%begc,bounds%endc
+       do fc = 1, num_hydrologyc
+          c = filter_hydrologyc(fc)
+          g = col%gridcell(c)
+         ! Saving for mpi_allreduce coming up
+          zwt_long(g)  = zwt_long(g) + col%wtgcell(c) * zwt(c)  ! GW_od goes to history
+          g_totCweight(g) = g_totCweight(g) + col%wtgcell(c)
+          g_cellarea_long(g)   = g_cellarea_long(g) + col%wtgcell(c) * grc%area(g)
+       end do  
+
+       do g = bounds%begg,bounds%endg
+          if (g_totCweight(g) <= 1.000001_r8 .and. g_totCweight(g) > 0.1) then
+              zwt_long(g)  = zwt_long(g) / g_totCweight(g)
+          else
+              ZeroHydroCell(g) = 1
+              ! write(*,*) 'Calculating zwt_long: Areal Sum of Col. Weights is either < 0.01 or > 1'
+              ! write(*,*) 'g,  g_totCweight(g)',g,  g_totCweight(g)
+          end if
+          ! if (iam == 0) then
+              ! write(*,*)'zwt_long(g), g_totCweight(g)',zwt_long(g), g_totCweight(g)
+          ! end if
+
+       end do  
+
+       ! Need action: what happens to the zwt_long of cells g_totCweight(g) < 0.01???????????????
+	
+       ! if (iam == 0) then
+           ! call endrun(subname // ':: Terminated!')
+       ! end if
+       ! ------------------------------------------------
+       ! Between the out and in loops
+       ! all processors share all the relevant data needed to come up with GW_id
+       ! Could the same be done in if (iam == 0) followed by call mpi_bcast?
+       ! ------------------------------------------------
+
+       ! Gather zwt_glob from zwt_long, ultimately
+       !                  from GW_od
+
+       ! I do MPI_SUM because each processor only has values for the patch/clump its dealing 
+       ! with and the rest of the array is zero   
+       call mpi_allreduce(zwt_long, zwt_glob, ng, &
+                          MPI_REAL8, MPI_SUM, mpicom, ier) 
+
+       ! we need to exclude those cells that have no hydrologically active columns  
+       call mpi_allreduce(ZeroHydroCell, ZeroHydroCell_glob, ng, &
+                          MPI_INTEGER, MPI_SUM, mpicom, ier) 
+
+       ! call mpi_allreduce(g_totCweight, g_totCweight_glob, ng, &
+                          ! MPI_REAL8, MPI_SUM, mpicom, ier) 
+						  
+       call mpi_barrier(mpicom,ier)
+
+       ! gathering the information from the neigboring cells.
+       do  g_out = 1, ng
+          ! if (zwt_glob(g_out) > 0._r8) then
+          if (ZeroHydroCell_glob(g_out)== 0) then
+
+             if (ldecomp%gtop(g_out) <= ng .and. ldecomp%gtop(g_out) >= 1 .and. ZeroHydroCell_glob(ldecomp%gtop(g_out)) == 0) then
+                zwt_neiSum_glob(g_out) = zwt_neiSum_glob(g_out) + zwt_glob(ldecomp%gtop(g_out))
+                neighbors_count(g_out) = neighbors_count(g_out) + 1._r8				
+             end if
+
+             if (ldecomp%gbot(g_out) <= ng .and. ldecomp%gbot(g_out) >= 1 .and. ZeroHydroCell_glob(ldecomp%gbot(g_out)) == 0) then
+                zwt_neiSum_glob(g_out) = zwt_neiSum_glob(g_out) + zwt_glob(ldecomp%gbot(g_out))
+                neighbors_count(g_out) = neighbors_count(g_out) + 1._r8
+             end if
+
+             if (ldecomp%glft(g_out) <= ng .and. ldecomp%glft(g_out) >= 1 .and. ZeroHydroCell_glob(ldecomp%glft(g_out)) == 0) then
+                zwt_neiSum_glob(g_out) = zwt_neiSum_glob(g_out) + zwt_glob(ldecomp%glft(g_out))
+                neighbors_count(g_out) = neighbors_count(g_out) + 1._r8
+             end if
+
+             if (ldecomp%grgt(g_out) <= ng .and. ldecomp%grgt(g_out) >= 1 .and. ZeroHydroCell_glob(ldecomp%grgt(g_out)) == 0) then
+                zwt_neiSum_glob(g_out) = zwt_neiSum_glob(g_out) + zwt_glob(ldecomp%grgt(g_out))
+                neighbors_count(g_out) = neighbors_count(g_out) + 1._r8
+             end if	
+
+             if (neighbors_count(g_out) .gt. 0._r8) then
+                zwt_neiSum_glob(g_out) = zwt_neiSum_glob(g_out) / neighbors_count(g_out)
+                Dzwt1_glob(g_out) = zwt_glob(g_out) - zwt_neiSum_glob(g_out)
+             end if
+          end if
+       end do
+
+       ! if (iam == 0) then
+           ! call endrun(subname // ':: Terminated!')
+       ! end if
+
+       ! The layer index of the first unsaturated layer, i.e., the layer right above
+       ! the water table
+       do fc = 1, num_hydrologyc
+          c = filter_hydrologyc(fc)
+          jwt(c) = nlevsoi
+          ! allow jwt to equal zero when zwt is in top layer  
+          do j = 1,nlevsoi
+             if(zwt(c) <= zi(c,j)) then
+                jwt(c) = j-1 
+                exit
+             end if
+          enddo
+       end do
+
+       AqTransmiss = this%TransmissivityFromFan(bounds, num_hydrologyc, filter_hydrologyc, soilstate_inst, soilhydrology_inst)	   
+
+            ! Water table changes due to qcharge
+       do fc = 1, num_hydrologyc
+          c = filter_hydrologyc(fc)
+          g = col%gridcell(c)
+
+
+          zwt_before = zwt(c)
+          Theim2(c) = ((GW_ratio(c) * qflx_irrig(c) * col%wtgcell(c) * grc%area(g) * km2_to_mm2) / (2._r8 * SHR_CONST_PI * AqTransmiss(c)) + &
+                      (qcharge(c) * (0.208_r8 * sqrt(col%wtgcell(c) * grc%area(g)) * km_to_mm)**2/(2._r8 * AqTransmiss(c)))) * log(1._r8/0.208_r8) * mm_to_m
+
+          Theim3(c) = - (qcharge(c) * col%wtgcell(c) * grc%area(g) * km2_to_mm2 * (1._r8-0.208_r8**2)/(4._r8 * AqTransmiss(c))) * mm_to_m
+
+          ! Calculating the weighted average Delta zwt between the mean of four neighbors and the center
+          Dzwt2(g)  = Dzwt2(g) + col%wtgcell(c) * (Theim2(c) + Theim3(c))
+
+
+          Theim2_long(g) = Theim2_long(g) + col%wtgcell(c) * Theim2(c)
+          Theim3_long(g) = Theim3_long(g) + col%wtgcell(c) * Theim3(c)
+          qirrig_long(g) = qirrig_long(g) + col%wtgcell(c) * qflx_irrig(c) * dtime
+          GW_ratio_long(g) = GW_ratio_long(g) + col%wtgcell(c) * GW_ratio(c)
+
+          !if (qflx_irrig(c) /= 0._r8) write(*,*) 'qflx_irrig', qflx_irrig(c) * dtime 
+
+          ! if (zwt_neiSum_glob(g) + Theim2(c) + Theim3(c) <= col%bedrock_depth(c)) then
+             ! zwt(c) = zwt_neiSum_glob(g) + Theim2(c) + Theim3(c)
+ 
+             ! zwt(c) = max(0.0_r8,zwt(c))
+             ! zwt(c) = min(80._r8,zwt(c))
+
+             ! jwt(c) = nlevsoi
+             ! do j = 1,nlevsoi
+                ! if(zwt(c) <= zi(c,j)) then
+                   ! jwt(c) = j-1 
+                   ! exit
+                ! end if
+             ! enddo
+             ! wa(c)  = wa(c) - GW_ratio(c) * qflx_irrig(c) * dtime
+
+             ! if(jwt(c) == nlevsoi) then             
+                ! wa(c)  = wa(c) + qcharge(c)  * dtime  
+             ! endif
+
+          ! else if (zwt_neiSum_glob(g) + Theim2(c) + Theim3(c) > col%bedrock_depth(c))then 
+          ! end if
+       enddo
+
+       do g = bounds%begg,bounds%endg
+          if (g_totCweight(g) <= 1.000001_r8 .and. g_totCweight(g) > 0.01) then
+              Dzwt2(g)  = Dzwt2(g) / g_totCweight(g)
+              qirrig_long(g)  = qirrig_long(g) / g_totCweight(g)
+              GW_ratio_long(g)  = GW_ratio_long(g) / g_totCweight(g)
+              Theim2_long(g)    = Theim2_long(g)/ g_totCweight(g)
+              Theim3_long(g)    = Theim3_long(g)/ g_totCweight(g)
+          end if
+       end do     
+
+	   ! Sending/sharing Dzwt2 between all processors
+       call mpi_allreduce(Dzwt2, Dzwt2_glob, ng, &
+                          MPI_REAL8, MPI_SUM, mpicom, ier)
+       call mpi_barrier(mpicom,ier)
+
+       ! call mpi_allreduce(qirrig_long, qirrig_glob, ng, &
+                          ! MPI_REAL8, MPI_SUM, mpicom, ier) 
+
+       ! call mpi_allreduce(GW_ratio_long, GW_ratio_glob, ng, &
+                          ! MPI_REAL8, MPI_SUM, mpicom, ier) 
+	   
+       call mpi_allreduce(g_cellarea_long, g_cellarea_glob, ng, &
+                          MPI_REAL8, MPI_SUM, mpicom, ier) 
+
+       ! call mpi_allreduce(Theim2_long, Theim2_glob, ng, &
+                          ! MPI_REAL8, MPI_SUM, mpicom, ier) 
+
+       ! call mpi_allreduce(Theim3_long, Theim3_glob, ng, &
+                          ! MPI_REAL8, MPI_SUM, mpicom, ier) 						  
+       call mpi_barrier(mpicom,ier)
+
+       ! calcualting the analytical aquifer specific yield in grid cell level 
+       do fc = 1, num_hydrologyc
+          c = filter_hydrologyc(fc)
+          g = col%gridcell(c)
+         ! Saving for mpi_allreduce coming up
+          g_watsat_long(g)  = g_watsat_long(g) + watsat(c,nlevsoi) * col%wtgcell(c) 
+          g_sucst_long(g)   = g_sucst_long(g)  + sucsat(c,nlevsoi) * col%wtgcell(c) 
+          g_bsw_long(g)     = g_bsw_long(g)    + bsw(c,nlevsoi) * col%wtgcell(c)
+       end do
+
+       do g = bounds%begg,bounds%endg
+          if (g_totCweight(g) <= 1.000001_r8 .and. g_totCweight(g) > 0.01) then
+              g_watsat_long(g)  = g_watsat_long(g) / g_totCweight(g)
+              g_sucst_long(g)   = g_sucst_long(g) / g_totCweight(g)
+              g_bsw_long(g)     = g_bsw_long(g) / g_totCweight(g)
+          end if
+       end do
+
+       do g = bounds%begg,bounds%endg 
+          if (ZeroHydroCell_glob(g) == 0 .and. neighbors_count(g) > 0._r8) then
+             rous = g_watsat_long(g) &
+                       * ( 1. - (1.+1.e3*zwt_long(g)/g_sucst_long(g))**(-1./g_bsw_long(g)))
+
+             !if (iam == 200 .and. month==7 .and. day==1 .and. secs==84600) then  
+             !if (qirrig_glob(g)> 0._r8) then
+             if (day == 15 .and. qirrig_long(g) > 0._r8) then 
+                write(*,*) ' '
+                write(*,*) 'lat; lon', ldecomp%glat(g), ldecomp%glon(g)
+                write(*,*) 'g_totCweight', g_totCweight(g)
+                write(*,*) 'g_watsat_long, zwt_long',g_watsat_long(g), zwt_long(g)
+                write(*,*) 'g_sucst_long, g_bsw_long',g_sucst_long(g), g_bsw_long(g)
+                write(*,*) 'zwt_long', zwt_glob(g)
+                write(*,*) 'Dzwt2_glob, Dzwt1_glob', Dzwt2_glob(g), Dzwt1_glob(g)
+                write(*,*) 'Theim2_long, Theim3_long', Theim2_long(g), Theim3_long(g)
+                write(*,*) 'rous, neighbors_count',g , rous, neighbors_count(g)
+                write(*,*) 'qirrig_long,GW_ratio_long', qirrig_long(g), GW_ratio_long(g)
+                write(*,*) ' '
+             end if
+
+             rous=max(rous,0.02_r8)
+             if (abs(Dzwt2_glob(g)) >= abs(Dzwt1_glob(g)) .and. Dzwt2_glob(g) >= 0._r8) then
+
+                   Ddelta_long(g) = Ddelta_long(g) - (abs(Dzwt2_glob(g)) - abs(Dzwt1_glob(g))) * rous
+                   if (ldecomp%gtop(g) <= ng .and. ldecomp%gtop(g) >= 1 .and. ZeroHydroCell_glob(ldecomp%gtop(g)) == 0) then
+                       aRatio = g_cellarea_glob(g) / g_cellarea_glob(ldecomp%gtop(g))
+                       Ddelta_long(ldecomp%gtop(g)) = Ddelta_long(ldecomp%gtop(g)) & 
+                                   + (abs(Dzwt2_glob(g)) - abs(Dzwt1_glob(g))) * aRatio * rous / neighbors_count(g)
+                   end if
+                   if (ldecomp%gbot(g) <= ng .and. ldecomp%gbot(g) >= 1 .and. ZeroHydroCell_glob(ldecomp%gbot(g)) == 0) then
+                       aRatio = g_cellarea_glob(g) / g_cellarea_glob(ldecomp%gbot(g))
+                       Ddelta_long(ldecomp%gbot(g)) = Ddelta_long(ldecomp%gbot(g)) & 
+                                   + (abs(Dzwt2_glob(g)) - abs(Dzwt1_glob(g))) * aRatio * rous / neighbors_count(g)
+                   end if
+                   if (ldecomp%glft(g) <= ng .and. ldecomp%glft(g) >= 1 .and. ZeroHydroCell_glob(ldecomp%glft(g)) == 0) then
+                       aRatio = g_cellarea_glob(g) / g_cellarea_glob(ldecomp%glft(g))
+                       Ddelta_long(ldecomp%glft(g)) = Ddelta_long(ldecomp%glft(g)) & 
+                                   + (abs(Dzwt2_glob(g)) - abs(Dzwt1_glob(g))) * aRatio * rous / neighbors_count(g)
+                   end if
+                   if (ldecomp%grgt(g) <= ng .and. ldecomp%grgt(g) >= 1 .and. ZeroHydroCell_glob(ldecomp%grgt(g)) == 0) then
+                       aRatio = g_cellarea_glob(g) / g_cellarea_glob(ldecomp%grgt(g))
+                       Ddelta_long(ldecomp%grgt(g)) = Ddelta_long(ldecomp%grgt(g)) & 
+                                   + (abs(Dzwt2_glob(g)) - abs(Dzwt1_glob(g))) * aRatio * rous / neighbors_count(g)
+                   end if	
+
+             else if (abs(Dzwt2_glob(g)) < abs(Dzwt1_glob(g)) .and. Dzwt2_glob(g) >= 0._r8) then
+
+                   Ddelta_long(g) = Ddelta_long(g) + (abs(Dzwt1_glob(g)) - abs(Dzwt2_glob(g))) * rous
+                   if (ldecomp%gtop(g) <= ng .and. ldecomp%gtop(g) >= 1 .and. ZeroHydroCell_glob(ldecomp%gtop(g)) == 0) then
+                       aRatio = g_cellarea_glob(g) / g_cellarea_glob(ldecomp%gtop(g))
+                       Ddelta_long(ldecomp%gtop(g)) = Ddelta_long(ldecomp%gtop(g)) & 
+                                   - (abs(Dzwt1_glob(g)) - abs(Dzwt2_glob(g))) * aRatio * rous / neighbors_count(g)
+                   end if
+                   if (ldecomp%gbot(g) <= ng .and. ldecomp%gbot(g) >= 1 .and. ZeroHydroCell_glob(ldecomp%gbot(g)) == 0) then
+                       aRatio = g_cellarea_glob(g) / g_cellarea_glob(ldecomp%gbot(g))
+                       Ddelta_long(ldecomp%gbot(g)) = Ddelta_long(ldecomp%gbot(g)) & 
+                                   - (abs(Dzwt1_glob(g)) - abs(Dzwt2_glob(g))) * aRatio * rous / neighbors_count(g)
+                   end if
+                   if (ldecomp%glft(g) <= ng .and. ldecomp%glft(g) >= 1 .and. ZeroHydroCell_glob(ldecomp%glft(g)) == 0) then
+                       aRatio = g_cellarea_glob(g) / g_cellarea_glob(ldecomp%glft(g))
+                       Ddelta_long(ldecomp%glft(g)) = Ddelta_long(ldecomp%glft(g)) & 
+                                   - (abs(Dzwt1_glob(g)) - abs(Dzwt2_glob(g))) * aRatio * rous / neighbors_count(g)
+                   end if
+                   if (ldecomp%grgt(g) <= ng .and. ldecomp%grgt(g) >= 1 .and. ZeroHydroCell_glob(ldecomp%grgt(g)) == 0) then
+                       aRatio = g_cellarea_glob(g) / g_cellarea_glob(ldecomp%grgt(g))
+                       Ddelta_long(ldecomp%grgt(g)) = Ddelta_long(ldecomp%grgt(g)) & 
+                                   - (abs(Dzwt1_glob(g)) - abs(Dzwt2_glob(g))) * aRatio * rous / neighbors_count(g)
+                   end if	
+				
+             else if (abs(Dzwt2_glob(g)) >= abs(Dzwt1_glob(g)) .and. Dzwt2_glob(g) < 0._r8) then	
+			 
+                   Ddelta_long(g) = Ddelta_long(g) + (abs(Dzwt2_glob(g)) - abs(Dzwt1_glob(g))) * rous
+                   if (ldecomp%gtop(g) <= ng .and. ldecomp%gtop(g) >= 1 .and. ZeroHydroCell_glob(ldecomp%gtop(g)) == 0) then
+                       aRatio = g_cellarea_glob(g) / g_cellarea_glob(ldecomp%gtop(g))
+                       Ddelta_long(ldecomp%gtop(g)) = Ddelta_long(ldecomp%gtop(g)) & 
+                                   - (abs(Dzwt2_glob(g)) - abs(Dzwt1_glob(g))) * aRatio * rous / neighbors_count(g)
+                   end if
+                   if (ldecomp%gbot(g) <= ng .and. ldecomp%gbot(g) >= 1 .and. ZeroHydroCell_glob(ldecomp%gbot(g)) == 0) then
+                       aRatio = g_cellarea_glob(g) / g_cellarea_glob(ldecomp%gbot(g))
+                       Ddelta_long(ldecomp%gbot(g)) = Ddelta_long(ldecomp%gbot(g)) & 
+                                   - (abs(Dzwt2_glob(g)) - abs(Dzwt1_glob(g))) * aRatio * rous / neighbors_count(g)
+                   end if
+                   if (ldecomp%glft(g) <= ng .and. ldecomp%glft(g) >= 1 .and. ZeroHydroCell_glob(ldecomp%glft(g)) == 0) then
+                       aRatio = g_cellarea_glob(g) / g_cellarea_glob(ldecomp%glft(g))
+                       Ddelta_long(ldecomp%glft(g)) = Ddelta_long(ldecomp%glft(g)) & 
+                                   - (abs(Dzwt2_glob(g)) - abs(Dzwt1_glob(g))) * aRatio * rous / neighbors_count(g)
+                   end if
+                   if (ldecomp%grgt(g) <= ng .and. ldecomp%grgt(g) >= 1 .and. ZeroHydroCell_glob(ldecomp%grgt(g)) == 0) then
+                       aRatio = g_cellarea_glob(g) / g_cellarea_glob(ldecomp%grgt(g))
+                       Ddelta_long(ldecomp%grgt(g)) = Ddelta_long(ldecomp%grgt(g)) & 
+                                   - (abs(Dzwt2_glob(g)) - abs(Dzwt1_glob(g))) * aRatio * rous / neighbors_count(g)
+                   end if
+
+             else if (abs(Dzwt2_glob(g)) < abs(Dzwt1_glob(g)) .and. Dzwt2_glob(g) < 0._r8) then
+
+                   Ddelta_long(g) = Ddelta_long(g) - (abs(Dzwt1_glob(g)) - abs(Dzwt2_glob(g))) * rous
+                   if (ldecomp%gtop(g) <= ng .and. ldecomp%gtop(g) >= 1 .and. ZeroHydroCell_glob(ldecomp%gtop(g)) == 0) then
+                       aRatio = g_cellarea_glob(g) / g_cellarea_glob(ldecomp%gtop(g))
+                       Ddelta_long(ldecomp%gtop(g)) = Ddelta_long(ldecomp%gtop(g)) & 
+                                   + (abs(Dzwt1_glob(g)) - abs(Dzwt2_glob(g))) * aRatio * rous / neighbors_count(g)
+                   end if
+                   if (ldecomp%gbot(g) <= ng .and. ldecomp%gbot(g) >= 1 .and. ZeroHydroCell_glob(ldecomp%gbot(g)) == 0) then
+                       aRatio = g_cellarea_glob(g) / g_cellarea_glob(ldecomp%gbot(g))
+                       Ddelta_long(ldecomp%gbot(g)) = Ddelta_long(ldecomp%gbot(g)) & 
+                                   + (abs(Dzwt1_glob(g)) - abs(Dzwt2_glob(g))) * aRatio * rous / neighbors_count(g)
+                   end if
+                   if (ldecomp%glft(g) <= ng .and. ldecomp%glft(g) >= 1 .and. ZeroHydroCell_glob(ldecomp%glft(g)) == 0) then
+                       aRatio = g_cellarea_glob(g) / g_cellarea_glob(ldecomp%glft(g))
+                       Ddelta_long(ldecomp%glft(g)) = Ddelta_long(ldecomp%glft(g)) & 
+                                   + (abs(Dzwt1_glob(g)) - abs(Dzwt2_glob(g))) * aRatio * rous / neighbors_count(g)
+                   end if
+                   if (ldecomp%grgt(g) <= ng .and. ldecomp%grgt(g) >= 1 .and. ZeroHydroCell_glob(ldecomp%grgt(g)) == 0) then
+                       aRatio = g_cellarea_glob(g) / g_cellarea_glob(ldecomp%grgt(g))
+                       Ddelta_long(ldecomp%grgt(g)) = Ddelta_long(ldecomp%grgt(g)) & 
+                                   + (abs(Dzwt1_glob(g)) - abs(Dzwt2_glob(g))) * aRatio * rous / neighbors_count(g)
+                   end if
+             end if
+          end if
+       end do     
+
+       ! mpi all reduce; sending lateral GW 
+
+       call mpi_allreduce(Ddelta_long, Ddelta_glob, ng, &
+                          MPI_REAL8, MPI_SUM, mpicom, ier) 
+       call mpi_barrier(mpicom,ier)
+	   
+       ! Checking the lateral water balance (in terms of volume) 
+       if (iam == 200) then
+          dummysum = 0._r8
+          do  g = 1, ng
+              dummysum = dummysum + Ddelta_glob(g) * g_cellarea_glob(g)
+            !  if (qirrig_glob(g) > 0.0 .and. Ddelta_glob(g) >= 3.0) then
+            !      write(*,*)' '
+            !      write(*,*) 'g, Ddelta_glob', g, Ddelta_glob(g) 
+            !      write(*,*) 'lat; lon', ldecomp%glat(g), ldecomp%glon(g)
+            !      write(*,*) 'g_totCweight_glob', g_totCweight_glob(g)
+            !      write(*,*) 'GW_ratio_glob, qirrig_glob', GW_ratio_glob(g), qirrig_glob(g)
+            !      write(*,*) 'Dzwt1_glob(g), Dzwt2_glob(g)', Dzwt1_glob(g), Dzwt2_glob(g)
+            !      write(*,*) 'zwt_long', zwt_glob(g)
+            !      write(*,*) 'Theim2_glob, Theim3_glob', Theim2_glob(g), Theim3_glob(g)
+            !      write(*,*)' '
+            !  end if
+          end do
+          write(*,*) 'Felfelani: this is the sum of the Latera GW; ', dummysum
+
+
+       end if
+       ! convert m to mm water
+	   
+	 
+       deallocate(zwt_neiSum_glob)
+       deallocate(Theim2)
+       deallocate(Theim3)
+       deallocate(zwt_long)
+       deallocate(zwt_glob)
+       deallocate(AqTransmiss)
+       deallocate(ZeroHydroCell)
+       deallocate(Dzwt1_glob)
+       deallocate(Dzwt2)
+       deallocate(Dzwt2_glob)
+       deallocate(Ddelta_long)
+       deallocate(Ddelta_glob)
+       deallocate(g_watsat_long)
+       deallocate(g_sucst_long)
+       deallocate(g_bsw_long)
+       deallocate(neighbors_count)
+       deallocate(g_cellarea_long)
+       deallocate(g_cellarea_glob)
+       deallocate(qirrig_long)
+       deallocate(qirrig_glob)
+       deallocate(GW_ratio_long)
+       deallocate(GW_ratio_glob)
+       deallocate(g_totCweight)
+       deallocate(g_totCweight_glob)
+       deallocate(Theim2_long)
+       deallocate(Theim2_glob)
+       deallocate(Theim3_long)
+       deallocate(Theim3_glob)
+     end associate
+  end subroutine UpdateGWTheim
+
+  !-----------------------------------------------------------------------
+
+  subroutine UpdateGWFanLateral(this, bounds, num_hydrologyc, filter_hydrologyc, &
+        soilhydrology_inst, soilstate_inst,irrigation_inst)
+
+    ! !DESCRIPTION:
+    !   This subroutine implements the water table dynamics in the CLM5.0
+    !   based on the parameterization of Fan et al. (2007) JGR paper.
+
+    ! !USES:
+    use spmdMod         , only : MPI_REAL8, MPI_SUM, mpicom, MPI_INTEGER
+    use decompMod       , only : ldecomp, get_proc_global
+    use shr_const_mod   , only : SHR_CONST_PI
+    use GridcellType    , only : grc
+    use clm_time_manager, only : get_step_size, get_curr_date
+    ! get_proc_global: total gridcells, landunits, columns, patchs across all processors
+    ! get_proc_global(ng, nl, nc, np, nCohorts) --->  all the arguments are intent(out)
+
+    ! !ARGUMENTS:
+    class(groundwater_type)  , intent(inout) :: this
+    type(bounds_type)        , intent(in)    :: bounds  
+    integer                  , intent(in)    :: num_hydrologyc       ! number of column soil points in column filter
+    integer                  , intent(in)    :: filter_hydrologyc(:) ! column filter for soil points
+    type(soilhydrology_type) , intent(inout) :: soilhydrology_inst
+    type(soilstate_type)     , intent(in)    :: soilstate_inst
+    type(irrigation_type)    , intent(in)    :: irrigation_inst	
+
+    ! !LOCAL VARIABLES:	
+ 
+    character(len=32) :: subname = 'GroundwaterMod' ! subroutine name 
+    real(r8), pointer :: zwt_long(:), g_totCweight(:) ! GW_out array for all grid cells
+    real(r8), pointer :: zwt_glob(:)                ! complete grid cell array of GW_out
+    real(r8), pointer :: Qn_glob(:)                 ! Lateral flow in (mm3)
+    real(r8), pointer :: AqTransmiss_long(:), AqTransmiss_glob(:)
+    real(r8), pointer :: g_cellarea_long(:), g_cellarea_glob(:)
+    real(r8), pointer :: neighbors_count(:)         ! complete grid cell array of count
+    real(r8), pointer :: zwt_neiSum_glob(:)             ! First term of Theim Theory
+    real(r8), pointer :: AqTransmiss(:)             ! Transmissivity of the aquifer (mm^2/s)
+
+    real(r8)          :: rous, aRatio               ! aquifer yield (-); area ratio of center/neighbor
+    real(r8)          :: AqTransmissMean            ! mean aquifer transmissivity of two adjucent cells
+    real(r8)          :: widMean, lenMean, deltaxMean! mean contact width and lenght of two adjucent cells
+    real(r8)          :: qcharge_tot
+    real(r8)          :: s_y, dummysum
+    real(r8)          :: qcharge_layer
+    integer           :: jwt(bounds%begc:bounds%endc)            ! index of the soil layer right above the water table (-)
+    real(r8)          :: dtime           ! land model time step (sec)
+
+    integer, pointer :: ZeroHydroCell(:)          ! cells that have no hydrological columns
+    integer, pointer :: ZeroHydroCell_glob(:)     ! global cells that have no hydrological columns
+	
+    integer :: ng, nl, nc, np, nCohorts      ! total number of grid cells,landunits,columns,patches
+    integer :: p, g ,c, g_dummy              ! patch, gridcell, column indices
+    integer :: g_in, g_out, ii, jj, idx,gg   ! gridcell indices in/out cells
+    integer :: ier                           ! error code
+    integer :: yr                            ! year
+    integer :: mon                           ! month
+    ! integer :: day                           ! day
+    integer :: tod                           ! seconds
+    integer :: j,fc,i
+
+    integer :: begg, endg       ! beginning and ending gridcell index of current proc
+    integer :: begl, endl       ! beginning and ending landunit index of current proc
+    integer :: begc, endc       ! beginning and ending column index of current proc
+    integer :: begp, endp       ! beginning and ending pft index of current proc
+
+    integer :: year       ! year (0, ...) for nstep
+    integer :: month      ! month (1, ..., 12) for nstep
+    integer :: day        ! day of month (1, ..., 31) for nstep
+    integer :: secs       ! seconds into current date for nstep
+    ! Conversion factors
+    real(r8), parameter :: km_to_mm   = 1.e6_r8
+    real(r8), parameter :: km2_to_mm2 = 1.e12_r8
+    real(r8), parameter :: mm_to_m    = 1.e-3_r8
+    real(r8), parameter :: m_to_mm    = 1.e3_r8
+    !-----------------------------------------------------------------------
+     associate(& 
+          !z                  =>    col%z                                 , & ! Input:  [real(r8) (:,:) ]  layer depth (m)                                 
+          zi                 =>    col%zi                                , & ! Input:  [real(r8) (:,:) ]  interface level below a "z" level (m)           
+          GW_ratio           =>    col%GW_ratio                          , & ! Input:  [real(r8) (:)   ]  USGS GW ratio as irrigation source                     
+                                               
+          qflx_irrig         =>    irrigation_inst%qflx_irrig_col        , & ! irrigation flux (mm H2O /s)
+
+          bsw                =>    soilstate_inst%bsw_col                , & ! Input:  [real(r8) (:,:) ]  Clapp and Hornberger "b"                        
+          hksat              =>    soilstate_inst%hksat_col              , & ! Input:  [real(r8) (:,:) ]  hydraulic conductivity at saturation (mm H2O /s)
+          sucsat             =>    soilstate_inst%sucsat_col             , & ! Input:  [real(r8) (:,:) ]  minimum soil suction (mm)                       
+          watsat             =>    soilstate_inst%watsat_col             , & ! Input:  [real(r8) (:,:) ]  volumetric soil water at saturation (porosity)  
+          eff_porosity       =>    soilstate_inst%eff_porosity_col       , & ! Input:  [real(r8) (:,:) ]  effective porosity = porosity - vol_ice         
+          clayP              =>    soilstate_inst%cellclay_col           , & ! Input:  [real(r8) (:,:) ] percent clay (0 < ~ < 100)-----> It is not a fraction!!!
+          hk_l               =>    soilstate_inst%hk_l_col               , & ! Input:  [real(r8) (:,:) ] hydraulic conductivity (mm/s) 
+
+          zwt                =>    soilhydrology_inst%zwt_col            , & ! Input and Output: [real(r8) (:)   ]  water table depth (m)                             
+          zwt_perched        =>    soilhydrology_inst%zwt_perched_col    , & ! Output: [real(r8) (:)   ]  perched water table depth (m)                     
+          frost_table        =>    soilhydrology_inst%frost_table_col    , & ! Output: [real(r8) (:)   ]  frost table depth (m)                             
+          wa                 =>    soilhydrology_inst%wa_col             , & ! Output: [real(r8) (:)   ]  water in the unconfined aquifer (mm)              
+          qcharge            =>    soilhydrology_inst%qcharge_col          & ! Input:  [real(r8) (:)   ]  aquifer recharge rate (mm/s)
+          )
+       !-----------------------------------------------
+       dtime = get_step_size()
+       call get_proc_global(ng=ng, nl=nl, nc=nc, np=np, nCohorts=nCohorts)
+
+       ! if (masterproc) then
+       if (iam == 200) then
+          call get_curr_date (year, month, day, secs)
+          write(*,*) 'year, month, day, secs, dtime, ', year, month, day, secs, dtime
+       end if
+
+       allocate(AqTransmiss(bounds%begc:bounds%endc))
+       allocate(AqTransmiss_long(ng))
+       allocate(AqTransmiss_glob(ng)) 
+       allocate(zwt_long(ng))
+       allocate(zwt_glob(ng))
+       allocate(Qn_glob(ng))
+       allocate(zwt_neiSum_glob(ng))
+       allocate(g_totCweight(ng))
+       allocate(g_cellarea_glob(ng))
+       allocate(neighbors_count(ng))
+       allocate(ZeroHydroCell(ng))
+       allocate(ZeroHydroCell_glob(ng))
+
+       zwt_long(:)           = 0._r8
+       Qn_glob(:)            = 0._r8
+       zwt_neiSum_glob(:)    = 0._r8
+       AqTransmiss_long(:)   = 0._r8
+       g_totCweight(:)       = 0._r8
+       neighbors_count(:)    = 0._r8
+       g_cellarea_long(:)    = 0._r8
+
+       ZeroHydroCell(:)      = 0
+       ZeroHydroCell_glob(:) = 0
+   
+       zwt_glob(:)           = 1.e36_r8
+       AqTransmiss_glob(:)   = 1.e36_r8
+       g_cellarea_glob(:)    = 1.e36_r8
+	   
+       AqTransmiss = this%TransmissivityFromFan(bounds, num_hydrologyc, filter_hydrologyc, soilstate_inst, soilhydrology_inst)	
+	   
+       do fc = 1, num_hydrologyc
+          c = filter_hydrologyc(fc)
+          g = col%gridcell(c)
+         ! Saving for mpi_allreduce coming up
+          zwt_long(g)  = zwt_long(g) + col%wtgcell(c) * zwt(c)
+          AqTransmiss_long(g) = AqTransmiss_long(g) + col%wtgcell(c) * AqTransmiss(c)
+          g_totCweight(g) = g_totCweight(g) + col%wtgcell(c)
+          g_cellarea_long(g)   = g_cellarea_long(g) + col%wtgcell(c) * grc%area(g)
+       end do  
+
+       do g = bounds%begg,bounds%endg
+          if (g_totCweight(g) <= 1.000001_r8 .and. g_totCweight(g) > 0.01) then
+              zwt_long(g)  = zwt_long(g) / g_totCweight(g)
+              AqTransmiss_long(g)  = AqTransmiss_long(g) / g_totCweight(g)
+          else
+              ZeroHydroCell(g) = 1
+          end if
+       end do  
+
+       ! I do MPI_SUM because each processor only has values for the patch/clump its dealing
+       ! with and the rest of the array is zero   
+       call mpi_allreduce(zwt_long, zwt_glob, ng, &
+                          MPI_REAL8, MPI_SUM, mpicom, ier) 
+
+       call mpi_allreduce(AqTransmiss_long, AqTransmiss_glob, ng, &
+                          MPI_REAL8, MPI_SUM, mpicom, ier) 
+
+       call mpi_allreduce(g_cellarea_long, g_cellarea_glob, ng, &
+                          MPI_REAL8, MPI_SUM, mpicom, ier)
+
+       ! we need to exclude those cells that have no hydrologically active columns
+       call mpi_allreduce(ZeroHydroCell, ZeroHydroCell_glob, ng, &
+                          MPI_INTEGER, MPI_SUM, mpicom, ier) 
+						  
+       call mpi_barrier(mpicom,ier)
+
+       ! gathering the information from the neigboring cells.
+       do  g = 1, ng
+          ! if (zwt_glob(g) > 0._r8) then
+          if (ZeroHydroCell_glob(g) /= 1) then
+
+             if (ldecomp%gtop(g) <= ng .and. ldecomp%gtop(g) >= 1 .and. ZeroHydroCell_glob(ldecomp%gtop(g)) /= 1) then
+                 AqTransmissMean = (AqTransmiss_glob(g) + AqTransmiss_glob(ldecomp%gtop(g)))/2._r8
+                 lenMean = (sqrt(g_cellarea_glob(g)) + sqrt(g_cellarea_glob(ldecomp%gtop(g)))) * km_to_mm / 2._r8
+                 widMean = lenMean * sqrt(0.5_r8 * tan(rpi/8._r8))
+                 Qn_glob(g) = Qn_glob(g) + widMean * AqTransmissMean * (zwt_glob(g) - zwt_glob(ldecomp%gtop(g))) * m_to_mm * dtime / lenMean
+
+             end if
+
+             if (ldecomp%gtoplft(g) <= ng .and. ldecomp%gtoplft(g) >= 1 .and. ZeroHydroCell_glob(ldecomp%gtoplft(g)) /= 1) then
+                 AqTransmissMean = (AqTransmiss_glob(g) + AqTransmiss_glob(ldecomp%gtoplft(g)))/2._r8
+                 lenMean = (sqrt(g_cellarea_glob(g)) + sqrt(g_cellarea_glob(ldecomp%gtoplft(g)))) * km_to_mm * sqrt(2._r8) / 2._r8
+                 deltaxMean = (sqrt(g_cellarea_glob(g)) + sqrt(g_cellarea_glob(ldecomp%gtoplft(g)))) * km_to_mm / 2._r8
+                 widMean = deltaxMean * sqrt(0.5_r8 * tan(rpi/8._r8))
+                 Qn_glob(g) = Qn_glob(g) + widMean * AqTransmissMean * (zwt_glob(g) - zwt_glob(ldecomp%gtoplft(g))) * m_to_mm * dtime / lenMean
+
+             end if
+
+             if (ldecomp%gtoprgt(g) <= ng .and. ldecomp%gtoprgt(g) >= 1 .and. ZeroHydroCell_glob(ldecomp%gtoprgt(g)) /= 1) then
+                 AqTransmissMean = (AqTransmiss_glob(g) + AqTransmiss_glob(ldecomp%gtoprgt(g)))/2._r8
+                 lenMean = (sqrt(g_cellarea_glob(g)) + sqrt(g_cellarea_glob(ldecomp%gtoprgt(g)))) * km_to_mm * sqrt(2._r8) / 2._r8
+                 deltaxMean = (sqrt(g_cellarea_glob(g)) + sqrt(g_cellarea_glob(ldecomp%gtoprgt(g)))) * km_to_mm / 2._r8
+                 widMean = deltaxMean * sqrt(0.5_r8 * tan(rpi/8._r8))
+                 Qn_glob(g) = Qn_glob(g) + widMean * AqTransmissMean * (zwt_glob(g) - zwt_glob(ldecomp%gtoprgt(g))) * m_to_mm * dtime / lenMean
+
+             end if
+
+             if (ldecomp%gbot(g) <= ng .and. ldecomp%gbot(g) >= 1 .and. ZeroHydroCell_glob(ldecomp%gbot(g)) /= 1) then
+                 AqTransmissMean = (AqTransmiss_glob(g) + AqTransmiss_glob(ldecomp%gbot(g)))/2._r8
+                 lenMean = (sqrt(g_cellarea_glob(g)) + sqrt(g_cellarea_glob(ldecomp%gbot(g)))) * km_to_mm / 2._r8
+                 widMean = lenMean * sqrt(0.5_r8 * tan(rpi/8._r8))
+                 Qn_glob(g) = Qn_glob(g) + widMean * AqTransmissMean * (zwt_glob(g) - zwt_glob(ldecomp%gbot(g))) * m_to_mm * dtime / lenMean
+
+             end if
+
+             if (ldecomp%gbotlft(g) <= ng .and. ldecomp%gbotlft(g) >= 1 .and. ZeroHydroCell_glob(ldecomp%gbotlft(g)) /= 1) then
+                 AqTransmissMean = (AqTransmiss_glob(g) + AqTransmiss_glob(ldecomp%gbotlft(g)))/2._r8
+                 lenMean = (sqrt(g_cellarea_glob(g)) + sqrt(g_cellarea_glob(ldecomp%gbotlft(g)))) * km_to_mm * sqrt(2._r8) / 2._r8
+                 deltaxMean = (sqrt(g_cellarea_glob(g)) + sqrt(g_cellarea_glob(ldecomp%gbotlft(g)))) * km_to_mm / 2._r8
+                 widMean = deltaxMean * sqrt(0.5_r8 * tan(rpi/8._r8))
+                 Qn_glob(g) = Qn_glob(g) + widMean * AqTransmissMean * (zwt_glob(g) - zwt_glob(ldecomp%gbotlft(g))) * m_to_mm * dtime / lenMean
+
+             end if
+
+             if (ldecomp%gbotrgt(g) <= ng .and. ldecomp%gbotrgt(g) >= 1 .and. ZeroHydroCell_glob(ldecomp%gbotrgt(g)) /= 1) then
+                 AqTransmissMean = (AqTransmiss_glob(g) + AqTransmiss_glob(ldecomp%gbotrgt(g)))/2._r8
+                 lenMean = (sqrt(g_cellarea_glob(g)) + sqrt(g_cellarea_glob(ldecomp%gbotrgt(g)))) * km_to_mm * sqrt(2._r8) / 2._r8
+                 deltaxMean = (sqrt(g_cellarea_glob(g)) + sqrt(g_cellarea_glob(ldecomp%gbotrgt(g)))) * km_to_mm / 2._r8
+                 widMean = deltaxMean * sqrt(0.5_r8 * tan(rpi/8._r8))
+                 Qn_glob(g) = Qn_glob(g) + widMean * AqTransmissMean * (zwt_glob(g) - zwt_glob(ldecomp%gbotrgt(g))) * m_to_mm * dtime / lenMean
+
+             end if
+
+             if (ldecomp%glft(g) <= ng .and. ldecomp%glft(g) >= 1 .and. ZeroHydroCell_glob(ldecomp%glft(g)) /= 1) then
+                 AqTransmissMean = (AqTransmiss_glob(g) + AqTransmiss_glob(ldecomp%glft(g)))/2._r8
+                 lenMean = (sqrt(g_cellarea_glob(g)) + sqrt(g_cellarea_glob(ldecomp%glft(g)))) * km_to_mm / 2._r8
+                 widMean = lenMean * sqrt(0.5_r8 * tan(rpi/8._r8))
+                 Qn_glob(g) = Qn_glob(g) + widMean * AqTransmissMean * (zwt_glob(g) - zwt_glob(ldecomp%glft(g))) * m_to_mm * dtime / lenMean
+
+             end if
+
+             if (ldecomp%grgt(g) <= ng .and. ldecomp%grgt(g) >= 1 .and. ZeroHydroCell_glob(ldecomp%grgt(g)) /= 1) then
+                 AqTransmissMean = (AqTransmiss_glob(g) + AqTransmiss_glob(ldecomp%grgt(g)))/2._r8
+                 lenMean = (sqrt(g_cellarea_glob(g)) + sqrt(g_cellarea_glob(ldecomp%grgt(g)))) * km_to_mm / 2._r8
+                 widMean = lenMean * sqrt(0.5_r8 * tan(rpi/8._r8))
+                 Qn_glob(g) = Qn_glob(g) + widMean * AqTransmissMean * (zwt_glob(g) - zwt_glob(ldecomp%grgt(g))) * m_to_mm * dtime / lenMean
+
+             end if	
+
+             ! if (neighbors_count(g) .gt. 0._r8) then
+                ! zwt_neiSum_glob(g) = zwt_neiSum_glob(g) / neighbors_count(g)
+                ! Dzwt1_glob(g) = zwt_glob(g) - zwt_neiSum_glob(g)
+             ! end if
+          end if
+       end do
+
+       ! Checking the lateral water balance (in terms of volume)
+       if (iam == 200) then
+          dummysum = 0._r8
+          do  g = 1, ng
+              dummysum = dummysum + Qn_glob(g)
+          end do
+          write(*,*) 'Felfelani: this is the sum of the Latera GW; ', dummysum
+          if (month==7 .and. day==1 .and. secs==84600) write(*,*) Qn_glob
+
+       end if
+
+       deallocate(AqTransmiss)
+       deallocate(AqTransmiss_long)
+       deallocate(AqTransmiss_glob) 
+       deallocate(zwt_long)
+       deallocate(zwt_glob)
+       deallocate(Qn_glob)
+       deallocate(zwt_neiSum_glob)
+       deallocate(g_totCweight)
+       deallocate(g_cellarea_long)
+       deallocate(g_cellarea_glob)
+       deallocate(neighbors_count)
+       deallocate(ZeroHydroCell)
+       deallocate(ZeroHydroCell_glob)
+
+     end associate
+  end subroutine UpdateGWFanLateral
+
+  !-----------------------------------------------------------------------
+
+  function TransmissivityFromFan(this, bounds, num_hydrologyc, filter_hydrologyc, &
+                                 soilstate_inst, soilhydrology_inst) &
+    result(Transmiss)
+
+    ! !DESCRIPTION:
+    !  Calculating the transmissivity based on the Fan et al. (2007)
+    !  and Zeng et al. (2016)
+
+    ! !ARGUMENTS:
+    class(groundwater_type)  , intent(in)    :: this
+    type(bounds_type)        , intent(in)    :: bounds
+    integer                  , intent(in)    :: num_hydrologyc       ! number of column soil points in column filter
+    integer                  , intent(in)    :: filter_hydrologyc(:) ! column filter for soil points
+    type(soilstate_type)     , intent(in)    :: soilstate_inst
+    type(soilhydrology_type) , intent(in)    :: soilhydrology_inst
+
+    ! !LOCAL VARIABLES:
+    integer  :: c,j,fc,i,g,l,g_dummy                         ! indices
+    real(r8) :: e_folding_length
+    real(r8) :: Transmiss(bounds%begc:bounds%endc)           ! Transmissivity of the aquifer (mm^2/s)
+    real(r8) :: beta_rad                                     ! terrain slope (rad)
+    integer  :: jwt2(bounds%begc:bounds%endc)                ! index of the soil layer right above the water table (-)
+
+    real(r8), parameter :: m_to_mm = 1.e3_r8	     
+
+    associate(                                                            & 	
+        ! z                  =>    col%z                                 , & ! Input:  [real(r8) (:,:) ] layer depth (m)                                 
+          zi                 =>    col%zi                                , & ! Input:  [real(r8) (:,:) ] interface level below a "z" level (m)           
+          dz                 =>    col%dz                                , & ! Input:  [real(r8) (:,:) ] layer depth (m)  
+
+          hksat               =>    soilstate_inst%hksat_col              , & ! Input:  [real(r8) (:,:) ]  hydraulic conductivity at saturation (mm H2O /s)
+        ! hk_l               =>    soilstate_inst%hk_l_col               , & ! Input:  [real(r8) (:,:) ] hydraulic conductivity (mm/s)                    
+          clayP              =>    soilstate_inst%cellclay_col           , & ! Input:  [real(r8) (:,:) ] percent clay (0 < ~ < 100)-----> It is not a fraction!!!
+          zwt                =>    soilhydrology_inst%zwt_col              & ! Input: [real(r8) (:)   ]  water table depth (m)
+          )
+    !-----------------------------------------------------------------------
+
+    ! The layer index of the first unsaturated layer, i.e., the layer right above
+    ! the water table
+    do fc = 1, num_hydrologyc
+       c = filter_hydrologyc(fc)
+       jwt2(c) = 100 ! arbitrarily 100 for water table below the soil column 
+       ! allow jwt2 to equal zero when zwt is in top layer
+       do j = 1,nlevsoi
+          if(zwt(c) <= zi(c,j)) then
+             jwt2(c) = j
+             exit
+          end if
+       enddo
+    end do
+
+    g_dummy = -999
+    Transmiss(:) = 0._r8
+    do fc = 1, num_hydrologyc
+       c = filter_hydrologyc(fc)
+       g = col%gridcell(c)
+       l = col%landunit(c)
+
+       ! Zeng et al.(2018): e_folding_length (m) calculations for bedrock	 
+       !beta_rad = (rpi/180.) * col%topo_slope(c)
+       !if (beta_rad <= 0.16) then
+       !    e_folding_length = 20._r8/(1._r8 + 125._r8*beta_rad)
+       !else if (beta_rad > 0.16) then
+       !    e_folding_length = 1._r8
+       !end if
+
+       ! Fan et al.(2007): e_folding_length (m) calculations for regolith
+       beta_rad = (rpi/180.) * col%topo_slope(c)
+       if (beta_rad <= 0.16) then
+           e_folding_length = 120._r8/(1._r8 + 150._r8*beta_rad)
+       else if (beta_rad > 0.16) then
+           e_folding_length = 5._r8
+       end if
+
+
+
+       if (jwt2(c) < nlevsoi) then
+          Transmiss(c) = clayP(c,jwt2(c)) * hksat(c,jwt2(c)) * (zi(c,jwt2(c))-zwt(c)) * m_to_mm
+          do j = jwt2(c)+1,nlevsoi
+             Transmiss(c) = Transmiss(c) + clayP(c,j) * hksat(c,j) * dz(c,j) * m_to_mm
+          end do
+          Transmiss(c) = Transmiss(c) + clayP(c,nlevsoi) * hksat(c,nlevsoi) * e_folding_length * m_to_mm
+
+       else if (jwt2(c) .eq. nlevsoi) then
+          Transmiss(c) = clayP(c,nlevsoi) * hksat(c,nlevsoi) * (zi(c,nlevsoi)-zwt(c)) * m_to_mm &
+                         + clayP(c,nlevsoi) * hksat(c,nlevsoi) * e_folding_length * m_to_mm
+
+       else if (jwt2(c) .eq. 100) then
+          Transmiss(c) = clayP(c,nlevsoi) * hksat(c,nlevsoi) * e_folding_length * m_to_mm &
+                         * exp((zi(c,nlevsoi)-zwt(c))/e_folding_length)
+       end if
+
+       !if (grc%latdeg(g) < 22.0 .and. grc%latdeg(g) > 21.0 .and. grc%londeg(g) < 243.0 .and. grc%londeg(g) > 242.0) then
+
+       !if (Transmiss(c) .le. 1.0 .and. g .ne. g_dummy) then
+       !    g_dummy = g
+
+       ! if ((c .eq. 1662431) .or. (c .eq. 1486770) .or. (c .eq. 1398102)) then
+           ! write(*,*)  '--------------------------------------------------------------' 
+           ! write(*,*)  'Felfelani Transmiss: Processor Num, g, c, lat(g), lon(g), grc%area(g)' 
+           ! write(*,*)   iam, g, c, grc%latdeg(g), grc%londeg(g), grc%area(g)
+           ! write(*,*)  'Transmiss(c), clayP(c,1), clayP(c,nlevsoi), hksat(c,1), hksat(c,nlevsoi)' 
+           ! write(*,*)   Transmiss(c), clayP(c,1), clayP(c,nlevsoi), hksat(c,1), hksat(c,nlevsoi) 
+           ! write(*,*)  'e_folding_length,zi(c,nlevsoi),zwt(c),beta_rad,col%topo_slope(c)'
+           ! write(*,*)   e_folding_length,zi(c,nlevsoi),zwt(c),beta_rad,col%topo_slope(c)
+           ! write(*,*)  '--------------------------------------------------------------'
+       ! end if 
+
+    end do
+    end associate
+  end function TransmissivityFromFan
+
+
+
+end module GroundwaterMod
