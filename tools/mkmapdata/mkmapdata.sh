@@ -343,6 +343,7 @@ case $hostname in
   if [ -z "$REGRID_PROC" ]; then
      REGRID_PROC=36
   fi
+  echo "REGRID_PROC=$REGRID_PROC" 
   esmfvers=7.1.0r
   intelvers=18.0.5    # Could also use intel/19.0.2 EBK 10/4/2019
   module load esmf_libs/$esmfvers
@@ -373,23 +374,21 @@ case $hostname in
   echo "REGRID_PROC=$REGRID_PROC"
   esmfvers=7.1.0r
   intelvers=17.0.1
-  module purge
-  module load intel/$intelvers
+  #module purge
+  #module load intel/$intelvers 
   if [ $? != 0 ]; then
     echo "Error doing module load: intel/$intelvers"
     exit 1
   fi
-  module load ncl
-  module load nco
-  module load netcdf
-  module load ncarcompilers
-
-  module load esmflibs/$esmfvers
+  #module load ncl
+  #module load nco
+  #module load netcdf
+  #module load ncarcompilers
+  #module load esmflibs/$esmfvers
   if [ $? != 0 ]; then
     echo "Error doing module load: esmflibs/$esmfvers"
     exit 1
   fi
-
   if [[ $REGRID_PROC > 1 ]]; then
      mpi=mpi
      echo "MPI option is NOT currently available"
@@ -397,7 +396,7 @@ case $hostname in
   else
      mpi=uni
   fi
-  module load esmf-${esmfvers}-ncdfio-${mpi}-O
+  #module load esmf-${esmfvers}-ncdfio-${mpi}-O
   if [ $? != 0 ]; then
     echo "Error doing module load: esmf-${esmfvers}-ncdfio-${mpi}-O"
     exit 1
