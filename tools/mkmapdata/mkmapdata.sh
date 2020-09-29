@@ -374,17 +374,17 @@ case $hostname in
   echo "REGRID_PROC=$REGRID_PROC"
   esmfvers=7.1.0r
   intelvers=17.0.1
-  #module purge
-  #module load intel/$intelvers 
+  # module purge
+  # module load intel/$intelvers 
   if [ $? != 0 ]; then
     echo "Error doing module load: intel/$intelvers"
     exit 1
   fi
-  #module load ncl
-  #module load nco
-  #module load netcdf
-  #module load ncarcompilers
-  #module load esmflibs/$esmfvers
+  # module load ncl
+  # module load nco
+  # module load netcdf
+  # module load ncarcompilers
+  # module load esmflibs/$esmfvers
   if [ $? != 0 ]; then
     echo "Error doing module load: esmflibs/$esmfvers"
     exit 1
@@ -396,7 +396,7 @@ case $hostname in
   else
      mpi=uni
   fi
-  #module load esmf-${esmfvers}-ncdfio-${mpi}-O
+  # module load esmf-${esmfvers}-ncdfio-${mpi}-O
   if [ $? != 0 ]; then
     echo "Error doing module load: esmf-${esmfvers}-ncdfio-${mpi}-O"
     exit 1
