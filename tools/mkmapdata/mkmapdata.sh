@@ -346,8 +346,9 @@ case $hostname in
   echo "REGRID_PROC=$REGRID_PROC" 
   esmfvers=7.1.0r
   intelvers=18.0.5    # Could also use intel/19.0.2 EBK 10/4/2019
-  module load esmf_libs/$esmfvers
+
   module load intel/$intelvers
+  module load esmf_libs/$esmfvers
   module load ncl
   module load nco
 
