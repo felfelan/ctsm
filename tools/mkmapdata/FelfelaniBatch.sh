@@ -25,4 +25,4 @@ module load esmflibs/$esmfvers
 module load esmf-${esmfvers}-ncdfio-uni-O
 
 ### Run program
-srun ./mkmapdata.sh -f ../mkmapgrids/SCRIPgrid_2minGLakes_nomask_modifiedNOfilled_c200925.nc -r 2minGlakes -t regional -v
+srun ./mkmapdata.sh -f ../mkmapgrids/SCRIPgrid_2minGLakes_nomask_modifiedNOfilled_c200925.nc -r 2minGLakes -t regional -v
