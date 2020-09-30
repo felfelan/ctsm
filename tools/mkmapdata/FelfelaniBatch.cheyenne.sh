@@ -22,4 +22,4 @@ mkdir -p $TMPDIR
 export REGRID_PROC=36
 
 ### Run program
-mpiexec_mpt ./mkmapdata.sh -f ../mkmapgrids/SCRIPgrid_2minGLakes_nomask_modifiedNOfilled_c200925.nc -r 2minGlakes -t regional -v
+mpiexec_mpt ./mkmapdata.sh -f ../mkmapgrids/SCRIPgrid_2minGLakes_nomask_modifiedNOfilled_c200925.nc -r 2minGlakes -t regional -v 
