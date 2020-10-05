@@ -3,7 +3,7 @@
 #SBATCH --account=UMSU0010
 #SBATCH --ntasks=1
 #SBATCH --ntasks-per-node=1
-#SBATCH --time=08:30:00
+#SBATCH --time=24:00:00
 #SBATCH --partition=dav
 #SBATCH --output=mkmapdata.out.%j
 
@@ -25,4 +25,5 @@ module load esmflibs/$esmfvers
 module load esmf-${esmfvers}-ncdfio-uni-O
 
 ### Run program
-srun ./mkmapdata.sh -f ../mkmapgrids/SCRIPgrid_2minGLakes_nomask_modifiedNOfilled_c200925.nc -r 2minGLakes -t regional -v
+#srun ./mkmapdata.sh -f ../mkmapgrids/SCRIPgrid_2minGLakes_nomask_modifiedNOfilled_c200925.nc -r 2minGLakes -t regional -v
+srun ./mkmapdata.sh -f ../mkmapgrids/SCRIPgrid_2minGLakes_nomask_c200925.nc -r 2minGLakes -t regional -v
