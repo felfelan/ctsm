@@ -39,6 +39,8 @@ program mksurfdat
     use mkdomainMod        , only : domain_type, domain_read_map, domain_read, &
                                     domain_write
     use mkgdpMod           , only : mkgdp
+    use mkWTDMod           , only : mkWTD
+    use mkUSGSGWratioMod   , only : mkUSGSGWratio
     use mkpeatMod          , only : mkpeat
     use mksoildepthMod          , only : mksoildepth
     use mkagfirepkmonthMod , only : mkagfirepkmon
@@ -56,7 +58,7 @@ program mksurfdat
 ! 3/18/08: David Lawrence added organic matter processing
 ! 1/22/09: Keith Oleson added urban parameter processing
 ! 2/11/13: Sam Levis added abm, peat, and gdp processing for new fire model
-!
+! 10/26/18:Farshid Felfelani added WTD and USGS GW
 !
 ! !LOCAL VARIABLES:
 !EOP
@@ -122,6 +124,8 @@ program mksurfdat
     real(r8), allocatable  :: ef1_crp(:)         ! Isoprene emission factor for crops
     real(r8), allocatable  :: organic(:,:)       ! organic matter density (kg/m3)            
     real(r8), allocatable  :: gdp(:)             ! GDP (x1000 1995 US$/capita)
+    real(r8), allocatable  :: WTD(:)             ! WTD
+    real(r8), allocatable  :: USGS_mean(:)       ! USGS GW
     real(r8), allocatable  :: fpeat(:)           ! peatland fraction of gridcell
     real(r8), allocatable  :: soildepth(:)       ! soil depth (m)
     integer , allocatable  :: agfirepkmon(:)     ! agricultural fire peak month
@@ -167,6 +171,8 @@ program mksurfdat
          mksrf_flai,               &
          mksrf_fdynuse,            &
          mksrf_fgdp,               &
+         mksrf_fWTD,               &
+         mksrf_fUSGSGW,            &
          mksrf_fpeat,              &
          mksrf_fsoildepth,         &
          mksrf_fabm,               &
@@ -199,6 +205,8 @@ program mksurfdat
          map_flai,                 &
          map_fharvest,             &
          map_fgdp,                 &
+         map_fWTD,                 &
+         map_fUSGSGW,              &
          map_fpeat,                &
          map_fsoildepth,           &
          map_fabm,                 &
@@ -243,6 +251,8 @@ program mksurfdat
     !    mksrf_fhrvtyp -- harvest type dataset
     !    mksrf_fvocef  -- Volatile Organic Compund Emission Factor dataset
     !    mksrf_fgdp ----- GDP dataset
+    !    mksrf_fWTD ----- WTD dataset
+    !    mksrf_fUSGSGW -- USGSGW dataset
     !    mksrf_fpeat ---- Peatland dataset
     !    mksrf_fsoildepth Soil depth dataset
     !    mksrf_fabm ----- Agricultural fire peak month dataset
@@ -267,6 +277,8 @@ program mksurfdat
     !    map_flai -------- Mapping for mksrf_flai
     !    map_fharvest ---- Mapping for mksrf_flai harvesting
     !    map_fgdp -------- Mapping for mksrf_fgdp
+    !    map_fWTD -------- Mapping for mksrf_fWTD
+    !    map_fUSGSGW------ Mapping for mksrf_fUSGSGW
     !    map_fpeat ------- Mapping for mksrf_fpeat
     !    map_fsoildepth -- Mapping for mksrf_fsoildepth
     !    map_fabm -------- Mapping for mksrf_fabm
@@ -445,6 +457,8 @@ program mksurfdat
                pctclay(ns_o,nlevsoi)              , & 
                soicol(ns_o)                       , & 
                gdp(ns_o)                          , & 
+               WTD(ns_o)                          , & 
+               USGS_mean(ns_o)                    , & 	
                fpeat(ns_o)                        , & 
                soildepth(ns_o)                    , & 
                agfirepkmon(ns_o)                  , & 
@@ -470,6 +484,8 @@ program mksurfdat
     pctclay(:,:)          = spval
     soicol(:)             = -999
     gdp(:)                = spval
+    WTD(:)                = spval
+    USGS_mean(:)          = spval
     fpeat(:)              = spval
     soildepth(:)          = spval
     agfirepkmon(:)        = -999
@@ -523,6 +539,8 @@ program mksurfdat
     write(ndiag,*) 'soil color from:             ',trim(mksrf_fsoicol)
     write(ndiag,*) 'VOC emission factors from:   ',trim(mksrf_fvocef)
     write(ndiag,*) 'gdp from:                    ',trim(mksrf_fgdp)
+    write(ndiag,*) 'WTD from:                    ',trim(mksrf_fWTD)
+    write(ndiag,*) 'USGSGW from:                 ',trim(mksrf_fUSGSGW)
     write(ndiag,*) 'peat from:                   ',trim(mksrf_fpeat)
     write(ndiag,*) 'soil depth from:             ',trim(mksrf_fsoildepth)
     write(ndiag,*) 'abm from:                    ',trim(mksrf_fabm)
@@ -544,6 +562,8 @@ program mksurfdat
     write(ndiag,*)' mapping for lai/sai          ',trim(map_flai)
     write(ndiag,*)' mapping for urb topography   ',trim(map_furbtopo)
     write(ndiag,*)' mapping for GDP              ',trim(map_fgdp)
+    write(ndiag,*)' mapping for WTD              ',trim(map_fWTD)
+    write(ndiag,*)' mapping for USGSGW           ',trim(map_fUSGSGW)
     write(ndiag,*)' mapping for peatlands        ',trim(map_fpeat)
     write(ndiag,*)' mapping for soil depth       ',trim(map_fsoildepth)
     write(ndiag,*)' mapping for ag fire pk month ',trim(map_fabm)
@@ -611,6 +631,16 @@ program mksurfdat
 
     call mkgdp (ldomain, mapfname=map_fgdp, datfname=mksrf_fgdp, &
          ndiag=ndiag, gdp_o=gdp)
+
+    ! Make WTD data [WTD] from [WTD]
+
+    call mkWTD (ldomain, mapfname=map_fWTD, datfname=mksrf_fWTD, &
+         ndiag=ndiag, WTD_o=WTD)
+
+    ! Make USGS GW data [USGS_mean] from [USGS_mean]
+
+    call mkUSGSGWratio (ldomain, mapfname=map_fUSGSGW, datfname=mksrf_fUSGSGW, &
+         ndiag=ndiag, USGS_o=USGS_mean)
 
     ! Make peat data [fpeat] from [peatf]
 
@@ -940,6 +970,12 @@ program mksurfdat
        call check_ret(nf_inq_varid(ncid, 'gdp', varid), subname)
        call check_ret(nf_put_var_double(ncid, varid, gdp), subname)
 
+       call check_ret(nf_inq_varid(ncid, 'WTD', varid), subname)
+       call check_ret(nf_put_var_double(ncid, varid, WTD), subname)
+
+       call check_ret(nf_inq_varid(ncid, 'USGS_mean', varid), subname)
+       call check_ret(nf_put_var_double(ncid, varid, USGS_mean), subname)
+
        call check_ret(nf_inq_varid(ncid, 'peatf', varid), subname)
        call check_ret(nf_put_var_double(ncid, varid, fpeat), subname)
 
@@ -1045,7 +1081,7 @@ program mksurfdat
     deallocate ( fmax )
     deallocate ( pctsand, pctclay )
     deallocate ( soicol )
-    deallocate ( gdp, fpeat, agfirepkmon )
+    deallocate ( gdp, WTD, USGS_mean, fpeat, agfirepkmon )
     deallocate ( soildepth )
     deallocate ( topo_stddev, slope )
     deallocate ( vic_binfl, vic_ws, vic_dsmax, vic_ds )
