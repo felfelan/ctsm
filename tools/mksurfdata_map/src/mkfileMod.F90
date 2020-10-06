@@ -174,6 +174,14 @@ contains
     call check_ret(nf_put_att_text(ncid, NF_GLOBAL, &
          'gdp_raw_data_file_name', len_trim(str), trim(str)), subname)
 
+    str = get_filename(mksrf_fWTD)
+    call check_ret(nf_put_att_text(ncid, NF_GLOBAL, &
+         'WTD_raw_data_file_name', len_trim(str), trim(str)), subname)	 
+
+    str = get_filename(mksrf_fUSGSGW)
+    call check_ret(nf_put_att_text(ncid, NF_GLOBAL, &
+         'USGSGW_raw_data_file_name', len_trim(str), trim(str)), subname)	
+
     str = get_filename(mksrf_fpeat)
     call check_ret(nf_put_att_text(ncid, NF_GLOBAL, &
          'peatland_raw_data_file_name', len_trim(str), trim(str)), subname)
@@ -259,6 +267,14 @@ contains
     str = get_filename(map_fgdp)
     call check_ret(nf_put_att_text(ncid, NF_GLOBAL, &
          'map_gdp_file', len_trim(str), trim(str)), subname)
+
+    str = get_filename(map_fWTD)
+    call check_ret(nf_put_att_text(ncid, NF_GLOBAL, &
+         'map_WTD_file', len_trim(str), trim(str)), subname)
+
+    str = get_filename(map_fUSGSGW)
+    call check_ret(nf_put_att_text(ncid, NF_GLOBAL, &
+         'map_USGSGW_file', len_trim(str), trim(str)), subname)
 
     str = get_filename(map_fpeat)
     call check_ret(nf_put_att_text(ncid, NF_GLOBAL, &
@@ -439,6 +455,12 @@ contains
 
        call ncd_def_spatial_var(ncid=ncid, varname='gdp', xtype=xtype, &
             long_name='gdp', units='unitless')
+
+       call ncd_def_spatial_var(ncid=ncid, varname='WTD', xtype=xtype, &
+            long_name='WTD', units='m')
+
+       call ncd_def_spatial_var(ncid=ncid, varname='USGS_mean', xtype=xtype, &
+            long_name='USGS_mean', units='unitless')
 
        call ncd_def_spatial_var(ncid=ncid, varname='SLOPE', xtype=xtype, &
             long_name='mean topographic slope', units='degrees')
