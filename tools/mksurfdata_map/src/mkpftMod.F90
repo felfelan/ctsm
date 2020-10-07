@@ -951,7 +951,7 @@ subroutine mkpftAtt( ncid, dynlanduse, xtype )
 !
   use mkncdio    , only : check_ret, ncd_defvar, ncd_def_spatial_var
   use fileutils  , only : get_filename
-  use mkvarctl   , only : mksrf_fvegtyp, mksrf_flai
+  use mkvarctl   , only : mksrf_fvegtyp, mksrf_fvegtypF, mksrf_flai
   use mkvarpar   
 
 ! !ARGUMENTS:
@@ -1009,6 +1009,11 @@ subroutine mkpftAtt( ncid, dynlanduse, xtype )
      str = get_filename(mksrf_fvegtyp)
      call check_ret(nf_put_att_text(ncid, NF_GLOBAL, &
        'Vegetation_type_raw_data_filename', len_trim(str), trim(str)), subname)
+
+     str = get_filename(mksrf_fvegtypF)
+     call check_ret(nf_put_att_text(ncid, NF_GLOBAL, &
+       'Vegetation_type_rawF_data_filename', len_trim(str), trim(str)), subname)
+
   end if
 
   ! Define variables
