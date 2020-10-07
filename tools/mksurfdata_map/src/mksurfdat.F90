@@ -156,8 +156,10 @@ program mksurfdat
 	 mksrf_fgrid,              &	
 	 mksrf_gridtype,           &	
          mksrf_fvegtyp,            &
+         mksrf_fvegtypF,           &
          mksrf_fhrvtyp,            &
-	 mksrf_fsoitex,            &
+         mksrf_fhrvtypF,            &
+         mksrf_fsoitex,            &
          mksrf_forganic,           &
          mksrf_fsoicol,            &
          mksrf_fvocef,             &
@@ -191,6 +193,7 @@ program mksurfdat
          all_urban,                &
          no_inlandwet,             &
          map_fpft,                 &
+         map_fpftF,                &
          map_flakwat,              &
          map_fwetlnd,              &
          map_fglacier,             &
@@ -204,6 +207,7 @@ program mksurfdat
          map_fvocef,               &
          map_flai,                 &
          map_fharvest,             &
+         map_fharvestF,            &
          map_fgdp,                 &
          map_fWTD,                 &
          map_fUSGSGW,              &
@@ -248,7 +252,9 @@ program mksurfdat
     !    mksrf_furbtopo-- Topography dataset (for limiting urban areas)
     !    mksrf_furban --- Urban dataset
     !    mksrf_fvegtyp -- PFT vegetation type dataset
+    !    mksrf_fvegtypF-- Fine-resolution PFT vegetation type dataset
     !    mksrf_fhrvtyp -- harvest type dataset
+    !    mksrf_fhrvtypF-- Fine-resolution harvest type dataset
     !    mksrf_fvocef  -- Volatile Organic Compund Emission Factor dataset
     !    mksrf_fgdp ----- GDP dataset
     !    mksrf_fWTD ----- WTD dataset
@@ -263,6 +269,7 @@ program mksurfdat
     ! Must specify mapping file for the different datafiles above
     ! ======================================
     !    map_fpft -------- Mapping for mksrf_fvegtyp
+    !    map_fpftF-------- Mapping for mksrf_fvegtypF
     !    map_flakwat ----- Mapping for mksrf_flakwat
     !    map_fwetlnd ----- Mapping for mksrf_fwetlnd
     !    map_fglacier ---- Mapping for mksrf_fglacier
@@ -276,6 +283,7 @@ program mksurfdat
     !    map_fvocef ------ Mapping for mksrf_fvocef
     !    map_flai -------- Mapping for mksrf_flai
     !    map_fharvest ---- Mapping for mksrf_flai harvesting
+    !    map_fharvestF ---- Mapping for mksrf_flai harvesting
     !    map_fgdp -------- Mapping for mksrf_fgdp
     !    map_fWTD -------- Mapping for mksrf_fWTD
     !    map_fUSGSGW------ Mapping for mksrf_fUSGSGW
@@ -525,7 +533,9 @@ program mksurfdat
     endif
 
     write(ndiag,*) 'PFTs from:                   ',trim(mksrf_fvegtyp)
+    write(ndiag,*) 'Fien-resolution PFTs from:   ',trim(mksrf_fvegtypF)
     write(ndiag,*) 'harvest from:                ',trim(mksrf_fhrvtyp)
+    write(ndiag,*) 'Fine-resolution harvest from: ',trim(mksrf_fhrvtypF)
     write(ndiag,*) 'fmax from:                   ',trim(mksrf_fmax)
     write(ndiag,*) 'glaciers from:               ',trim(mksrf_fglacier)
     write(ndiag,*) '           with:             ', nglcec, ' glacier elevation classes'
@@ -548,6 +558,7 @@ program mksurfdat
     write(ndiag,*) 'VIC parameters from:         ',trim(mksrf_fvic)
     write(ndiag,*) 'CH4 parameters from:         ',trim(mksrf_fch4)
     write(ndiag,*)' mapping for pft              ',trim(map_fpft)
+    write(ndiag,*)' mapping for Fine-resolution pft ',trim(map_fpftF)
     write(ndiag,*)' mapping for lake water       ',trim(map_flakwat)
     write(ndiag,*)' mapping for wetland          ',trim(map_fwetlnd)
     write(ndiag,*)' mapping for glacier          ',trim(map_fglacier)
@@ -559,6 +570,7 @@ program mksurfdat
     write(ndiag,*)' mapping for fmax             ',trim(map_fmax)
     write(ndiag,*)' mapping for VOC pct emis     ',trim(map_fvocef)
     write(ndiag,*)' mapping for harvest          ',trim(map_fharvest)
+    write(ndiag,*)' mapping for Fine-resolution harvest ',trim(map_fharvestF)
     write(ndiag,*)' mapping for lai/sai          ',trim(map_flai)
     write(ndiag,*)' mapping for urb topography   ',trim(map_furbtopo)
     write(ndiag,*)' mapping for GDP              ',trim(map_fgdp)
@@ -581,14 +593,14 @@ program mksurfdat
 
     ! Make PFTs [pctnatpft, pctcft] from dataset [fvegtyp]
 
-    call mkpft(ldomain, mapfname=map_fpft, fpft=mksrf_fvegtyp, &
+    call mkpft(ldomain, mapfname=map_fpftF, fpft=mksrf_fvegtypF, &
          ndiag=ndiag, pctlnd_o=pctlnd_pft, pctnatpft_o=pctnatpft, pctcft_o=pctcft)
 
     ! Create harvesting data at model resolution
-    call mkharvest_init( ns_o, spval, harvdata, mksrf_fhrvtyp )
+    call mkharvest_init( ns_o, spval, harvdata, mksrf_fhrvtypF )
     if ( .not. all_veg )then
 
-       call mkharvest( ldomain, mapfname=map_fharvest, datfname=mksrf_fhrvtyp, &
+       call mkharvest( ldomain, mapfname=map_fharvestF, datfname=mksrf_fhrvtypF, &
                        ndiag=ndiag, harvdata=harvdata )
     end if
 
