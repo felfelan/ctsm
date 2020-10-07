@@ -1197,7 +1197,8 @@ program mksurfdat
           ! Consistency check on input land fraction
 
           do n = 1,ns_o
-             if (pctlnd_pft_dyn(n) /= pctlnd_pft(n)) then
+             !if ((pctlnd_pft_dyn(n) /= pctlnd_pft(n))) then
+             if (abs(pctlnd_pft_dyn(n) - pctlnd_pft(n)) > 1.e-6_r8) then
                 write(6,*) subname,' error: pctlnd_pft for dynamics data = ',&
                      pctlnd_pft_dyn(n), ' not equal to pctlnd_pft for surface data = ',&
                      pctlnd_pft(n),' at n= ',n
