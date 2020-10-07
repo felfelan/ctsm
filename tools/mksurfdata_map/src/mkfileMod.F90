@@ -206,6 +206,10 @@ contains
     call check_ret(nf_put_att_text(ncid, NF_GLOBAL, &
          'map_pft_file_name', len_trim(str), trim(str)), subname)
 
+    str = get_filename(map_fpftF)
+    call check_ret(nf_put_att_text(ncid, NF_GLOBAL, &
+         'mapF_pft_file_name', len_trim(str), trim(str)), subname)
+
     str = get_filename(map_flakwat)
     call check_ret(nf_put_att_text(ncid, NF_GLOBAL, &
          'map_lakwat_file', len_trim(str), trim(str)), subname)
@@ -249,6 +253,10 @@ contains
     str = get_filename(map_fharvest)
     call check_ret(nf_put_att_text(ncid, NF_GLOBAL, &
          'map_harvest_file', len_trim(str), trim(str)), subname)
+
+    str = get_filename(map_fharvestF)
+    call check_ret(nf_put_att_text(ncid, NF_GLOBAL, &
+         'mapF_harvest_file', len_trim(str), trim(str)), subname)
 
     if ( numpft == numstdpft )then
        str = get_filename(map_flai)
