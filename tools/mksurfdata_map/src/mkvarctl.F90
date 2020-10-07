@@ -29,7 +29,9 @@ module mkvarctl
   character(len=256), public :: mksrf_fgrid      = ' '  ! land grid file name to use 
   character(len=256), public :: mksrf_gridtype   = ' '  ! land gridtype, global or reg
   character(len=256), public :: mksrf_fvegtyp    = ' '  ! vegetation data file name
+  character(len=256), public :: mksrf_fvegtypF   = ' '  ! Fine-resolution vegetation data file name
   character(len=256), public :: mksrf_fhrvtyp    = ' '  ! harvest data file name
+  character(len=256), public :: mksrf_fhrvtypF   = ' '  ! Fine-resolution harvest data file name
   character(len=256), public :: mksrf_fsoitex    = ' '  ! soil texture data file name
   character(len=256), public :: mksrf_forganic   = ' '  ! organic matter data file name
   character(len=256), public :: mksrf_fsoicol    = ' '  ! soil color data file name
@@ -56,6 +58,7 @@ module mkvarctl
   integer           , public :: numpft         = 16   ! number of plant types
 
   character(len=256), public :: map_fpft        = ' ' ! Mapping file for PFT
+  character(len=256), public :: map_fpftF       = ' ' ! Fine-resolution Mapping file for PFT  
   character(len=256), public :: map_flakwat     = ' ' ! Mapping file for lake water
   character(len=256), public :: map_fwetlnd     = ' ' ! Mapping file for wetland water
   character(len=256), public :: map_fglacier    = ' ' ! Mapping file for glacier
@@ -73,6 +76,7 @@ module mkvarctl
   character(len=256), public :: map_fvocef      = ' ' ! Mapping file for VOC emission factors
   character(len=256), public :: map_flai        = ' ' ! Mapping file for LAI
   character(len=256), public :: map_fharvest    = ' ' ! Mapping file for harvesting
+  character(len=256), public :: map_fharvestF   = ' ' ! Fine-resolution Mapping file for harvesting
   character(len=256), public :: map_ftopostats  = ' ' ! Mapping file for topography statistics
   character(len=256), public :: map_fvic        = ' ' ! Mapping file for VIC parameters
   character(len=256), public :: map_fch4        = ' ' ! Mapping file for inversion-derived CH4 parameters
