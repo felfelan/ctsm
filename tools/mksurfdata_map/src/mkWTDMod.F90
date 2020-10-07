@@ -72,7 +72,7 @@ subroutine mkWTD(ldomain, mapfname, datfname, ndiag, WTD_o)
   integer  :: ncid,varid                      ! input netCDF id's
   integer  :: ier                             ! error status
 
-  real(r8), parameter :: min_valid = 0._r8    ! minimum valid value
+  real(r8), parameter :: min_valid = -9999._r8    ! minimum valid value
 
   character(len=32) :: subname = 'mkWTD'
 !-----------------------------------------------------------------------
@@ -107,7 +107,7 @@ subroutine mkWTD(ldomain, mapfname, datfname, ndiag, WTD_o)
 
   call check_ret(nf_inq_varid (ncid, 'WTD', varid), subname)
   call check_ret(nf_get_var_double (ncid, varid, data_i), subname)
-  call gridmap_areaave(tgridmap, data_i, WTD_o, nodata=0._r8)
+  call gridmap_areaave(tgridmap, data_i, WTD_o, nodata=-9999._r8)
 
   ! Check validity of output data
   if (min_bad(WTD_o, min_valid, 'WTD')) then
