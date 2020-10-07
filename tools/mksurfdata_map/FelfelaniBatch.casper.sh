@@ -27,5 +27,6 @@ export REGRID_PROC=1
 ### Run program
 # srun ./mksurfdata.pl -res usrspec -usr_gname 2minGLakes -usr_gdate 200928 -y 1850-2000 -dinlc /glade/p/cesm/cseg/inputdata/ -crop -hirespft -ssp_rcp hist -usr_mapdir /glade/work/felfelan/CTSM/clm5N/tools/mkmapdata/GLakes_200928 -inlandwet -dynpft ./landuse_timeseries_hist_78pfts_simyr1850-2015.txt
 # srun ./mksurfdata.pl -res usrspec -usr_gname 2minGLakes -usr_gdate 200928 -y 1850-2000 -dinlc /glade/p/cesm/cseg/inputdata/ -crop -hirespft -ssp_rcp hist -usr_mapdir /glade/work/felfelan/CTSM/clm5N/tools/mkmapdata/GLakes_200928 -inlandwet
+# srun ./mksurfdata_map < ./GLakes_200930_y18502000_hirespft_ssp_rcphist_inlandwet/surfdata_2minGLakes_hist_78pfts_CMIP6_simyr1850_c200930.namelist.modnomask
 
-srun ./mksurfdata_map < ./GLakes_200930_y18502000_hirespft_ssp_rcphist_inlandwet/surfdata_2minGLakes_hist_78pfts_CMIP6_simyr1850_c200930.namelist.modnomask
+srun ./mksurfdata_map < ./GLakes_201002_y19792015_USGSGW_WTD_FineVeg/surfdata_2minGLakes_hist_78pfts_CMIP6_simyr1850_c200930.namelist.modnomask.Fine
