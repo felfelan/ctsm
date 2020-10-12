@@ -1,0 +1,4 @@
+./xmlchange ATM_DOMAIN_PATH=/glade/work/felfelan/CTSM/clm5N/tools/ncl_scripts/./MOSART_inout
+./xmlchange LND_DOMAIN_PATH=/glade/work/felfelan/CTSM/clm5N/tools/ncl_scripts/./MOSART_inout
+./xmlchange ATM_DOMAIN_FILE=domain.lnd.0.125d.GLakes.20191007.fromSUBSET.nc
+./xmlchange LND_DOMAIN_FILE=domain.lnd.0.125d.GLakes.20191007.fromSUBSET.nc
