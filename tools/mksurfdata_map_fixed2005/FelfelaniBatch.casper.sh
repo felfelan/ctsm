@@ -33,4 +33,6 @@ export REGRID_PROC=1
 
 # srun ./mksurfdata.pl -res usrspec -usr_gname 2minGLakes -usr_gdate 201002 -y 2005 -dinlc /glade/p/cesm/cseg/inputdata/ -crop -hirespft -usr_mapdir /glade/work/felfelan/CTSM/clm5N/tools/mkmapdata/GLakes_201002_nomask -inlandwet
 
-srun ./mksurfdata_map < surfdata_2minGLakes_hist_78pfts_CMIP6_simyr2005_c201008.namelist
+# srun ./mksurfdata_map < surfdata_2minGLakes_hist_78pfts_CMIP6_simyr2005_c201008.namelist
+
+srun ./mksurfdata_map < surfdata_2minGLakes_hist_78pfts_CMIP6_simyr2005_c201009.namelist
