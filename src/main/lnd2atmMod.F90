@@ -31,7 +31,8 @@ module lnd2atmMod
   use TemperatureType      , only : temperature_type
   use WaterFluxType        , only : waterflux_type
   use WaterstateType       , only : waterstate_type
-  use IrrigationMod        , only : irrigation_type 
+  use IrrigationMod        , only : irrigation_type
+  use SoilBiogeochemNitrogenfluxType     , only : soilbiogeochem_nitrogenflux_type
   use glcBehaviorMod       , only : glc_behavior_type
   use glc2lndMod           , only : glc2lnd_type
   use ColumnType           , only : col
@@ -123,7 +124,8 @@ contains
   !------------------------------------------------------------------------
   subroutine lnd2atm(bounds, &
        atm2lnd_inst, surfalb_inst, temperature_inst, frictionvel_inst, &
-       waterstate_inst, waterflux_inst, irrigation_inst, energyflux_inst, &
+       waterstate_inst, waterflux_inst, irrigation_inst, soilbiogeochem_nitrogenflux_inst, &
+       energyflux_inst, &
        solarabs_inst, drydepvel_inst,  &
        vocemis_inst, fireemis_inst, dust_inst, ch4_inst, glc_behavior, &
        lnd2atm_inst, &
@@ -144,6 +146,7 @@ contains
     type(waterstate_type)       , intent(inout) :: waterstate_inst
     type(waterflux_type)        , intent(inout) :: waterflux_inst
     type(irrigation_type)       , intent(in)    :: irrigation_inst
+	type(soilbiogeochem_nitrogenflux_type)       , intent(in)    :: soilbiogeochem_nitrogenflux_inst
     type(energyflux_type)       , intent(in)    :: energyflux_inst
     type(solarabs_type)         , intent(in)    :: solarabs_inst
     type(drydepvel_type)        , intent(in)    :: drydepvel_inst
@@ -383,6 +386,16 @@ contains
     call c2g( bounds, &
          irrigation_inst%qflx_irrig_col (bounds%begc:bounds%endc), &
          lnd2atm_inst%qirrig_grc(bounds%begg:bounds%endg), &
+         c2l_scale_type= 'urbanf', l2g_scale_type='unity' )
+
+    call c2g( bounds, &
+         soilbiogeochem_nitrogenflux_inst%smin_no3_runoff_col (bounds%begc:bounds%endc), &
+         lnd2atm_inst%smin_no3_runoff_grc(bounds%begg:bounds%endg), &
+         c2l_scale_type= 'urbanf', l2g_scale_type='unity' )
+
+    call c2g( bounds, &
+         soilbiogeochem_nitrogenflux_inst%smin_no3_leached_col (bounds%begc:bounds%endc), &
+         lnd2atm_inst%smin_no3_leached_grc(bounds%begg:bounds%endg), &
          c2l_scale_type= 'urbanf', l2g_scale_type='unity' )
 
     call c2g( bounds, &
