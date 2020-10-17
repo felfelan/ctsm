@@ -28,7 +28,9 @@ module clm_cpl_indices
   integer, public ::index_l2x_Flrl_rofsub     ! lnd->rtm input liquid subsurface fluxes
   integer, public ::index_l2x_Flrl_rofi       ! lnd->rtm input frozen fluxes
   integer, public ::index_l2x_Flrl_irrig      ! irrigation withdrawal
-
+  integer, public ::index_l2x_Flrl_no3_runoff      ! leached nitrogen to runoff
+  integer, public ::index_l2x_Flrl_no3_leached     ! leached nitrogen to runoff
+  
   integer, public ::index_l2x_Sl_t            ! temperature
   integer, public ::index_l2x_Sl_tref         ! 2m reference temperature
   integer, public ::index_l2x_Sl_qref         ! 2m reference specific humidity
@@ -176,7 +178,9 @@ contains
     index_l2x_Flrl_rofsub   = mct_avect_indexra(l2x,'Flrl_rofsub')
     index_l2x_Flrl_rofi     = mct_avect_indexra(l2x,'Flrl_rofi')
     index_l2x_Flrl_irrig    = mct_avect_indexra(l2x,'Flrl_irrig')
-
+    index_l2x_Flrl_no3_runoff    = mct_avect_indexra(l2x,'Flrl_no3_runoff')
+    index_l2x_Flrl_no3_leached   = mct_avect_indexra(l2x,'Flrl_no3_leached')
+	
     index_l2x_Sl_t          = mct_avect_indexra(l2x,'Sl_t')
     index_l2x_Sl_snowh      = mct_avect_indexra(l2x,'Sl_snowh')
     index_l2x_Sl_avsdr      = mct_avect_indexra(l2x,'Sl_avsdr')
