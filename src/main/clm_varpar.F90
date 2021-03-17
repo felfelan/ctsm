@@ -27,6 +27,7 @@ module clm_varpar
   integer            :: nlevgrnd              ! number of ground layers 
                                               ! (includes lower layers that are hydrologically inactive)
   integer            :: nlevurb               ! number of urban layers
+  integer, public    :: nlevmaxurbgrnd        ! maximum of the number of ground and urban layers
   integer            :: nlevlak               ! number of lake layers
   integer            :: nlevdecomp            ! number of biogeochemically active soil layers
   integer            :: nlevdecomp_full       ! number of biogeochemical layers 
@@ -159,7 +160,7 @@ contains
       nlevgrnd    =  nlevsoi+5
     endif
     if ( masterproc ) write(iulog, *) 'soil_layerstruct varpar ',soil_layerstruct,nlevsoi,nlevgrnd
-
+    nlevmaxurbgrnd = max0(nlevurb,nlevgrnd)
     if (use_vichydro) then
        nlayert     =  nlayer + (nlevgrnd -nlevsoi)
     endif
