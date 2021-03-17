@@ -39,6 +39,7 @@ module lnd2atmMod
   use LandunitType         , only : lun
   use GridcellType         , only : grc                
   use landunit_varcon      , only : istice_mec
+  use clm_time_manager     , only : get_curr_date, get_nstep
   !
   ! !PUBLIC TYPES:
   implicit none
@@ -135,7 +136,8 @@ contains
     ! Compute lnd2atm_inst component of gridcell derived type
     !
     ! !USES:
-    use ch4varcon  , only : ch4offline
+    use ch4varcon        , only : ch4offline
+    use landunit_varcon  , only : istwet, istsoil, istice_mec, istcrop
     !
     ! !ARGUMENTS:
     type(bounds_type)           , intent(in)    :: bounds  
@@ -159,8 +161,9 @@ contains
     real(r8)                    , intent(in)    :: net_carbon_exchange_grc( bounds%begg: )  ! net carbon exchange between land and atmosphere, positive for source (gC/m2/s)
     !
     ! !LOCAL VARIABLES:
-    integer  :: c, g  ! indices
+    integer  :: c, l, g, nstep  ! indices
     real(r8) :: qflx_ice_runoff_col(bounds%begc:bounds%endc) ! total column-level ice runoff
+    real(r8) :: qflx_adjusted_irrig_col(bounds%begc:bounds%endc) ! total column-level adjusted irrigation
     real(r8) :: eflx_sh_ice_to_liq_grc(bounds%begg:bounds%endg) ! sensible heat flux generated from the ice to liquid conversion, averaged to gridcell
     real(r8), parameter :: amC   = 12.0_r8 ! Atomic mass number for Carbon
     real(r8), parameter :: amO   = 16.0_r8 ! Atomic mass number for Oxygen
@@ -168,6 +171,8 @@ contains
     ! The following converts g of C to kg of CO2
     real(r8), parameter :: convertgC2kgCO2 = 1.0e-3_r8 * (amCO2/amC)
     !------------------------------------------------------------------------
+
+   associate(GW_ratio           => col%GW_ratio)! Input:  [real(r8) (:)   ]  USGS GW ratio as irrigation source
 
     SHR_ASSERT_ALL((ubound(net_carbon_exchange_grc) == (/bounds%endg/)), errMsg(sourcefile, __LINE__))
 
@@ -383,8 +388,28 @@ contains
          lnd2atm_inst%qflx_rofliq_drain_perched_grc(bounds%begg:bounds%endg), &
          c2l_scale_type= 'urbanf', l2g_scale_type='unity' )
 
+    ! call c2g( bounds, &
+         ! irrigation_inst%qflx_irrig_col (bounds%begc:bounds%endc), &
+         ! lnd2atm_inst%qirrig_grc(bounds%begg:bounds%endg), &
+         ! c2l_scale_type= 'urbanf', l2g_scale_type='unity' )
+
+    qflx_adjusted_irrig_col(:) = 0._r8
+    !  we need to adjust qflx_irrig_col and remove the GW-fed part, then 
+    !  send it to rof
+	nstep = get_nstep()
+    do c = bounds%begc, bounds%endc
+        l = col%landunit(c)
+        g = col%gridcell(c)
+		! if (nstep == 400 .and. c == 838456) write(*,*) 'lat, lon: ', grc%latdeg(g), grc%londeg(g)
+        if ((lun%itype(l)==istsoil .or. lun%itype(l)==istcrop) .and. col%active(c)) then
+             qflx_adjusted_irrig_col(c) = (1._r8 - GW_ratio(c)) * irrigation_inst%qflx_irrig_col(c)
+			 !if (nstep == 300 .and. (irrigation_inst%qflx_irrig_col(c) .ne. 0._r8)) write(*,*) 'c1, g, lat, lon: ', c, g, grc%latdeg(g), grc%londeg(g)
+			 !if (nstep == 300 .and. (irrigation_inst%qflx_irrig_col(c) .ne. 0._r8)) write(*,*) GW_ratio(c), irrigation_inst%qflx_irrig_col(c), qflx_adjusted_irrig_col(c)
+        end if
+    end do
+
     call c2g( bounds, &
-         irrigation_inst%qflx_irrig_col (bounds%begc:bounds%endc), &
+         qflx_adjusted_irrig_col(bounds%begc:bounds%endc), &
          lnd2atm_inst%qirrig_grc(bounds%begg:bounds%endg), &
          c2l_scale_type= 'urbanf', l2g_scale_type='unity' )
 
@@ -418,7 +443,7 @@ contains
     do g = bounds%begg, bounds%endg
        waterstate_inst%tws_grc(g) = waterstate_inst%tws_grc(g) + atm2lnd_inst%volr_grc(g) / grc%area(g) * 1.e-3_r8
     enddo
-
+   end associate
   end subroutine lnd2atm
 
   !-----------------------------------------------------------------------
