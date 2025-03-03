@@ -53,6 +53,8 @@ module ColumnType
      real(r8), pointer :: n_melt               (:)   ! SCA shape parameter
      real(r8), pointer :: topo_slope           (:)   ! gridcell topographic slope
      real(r8), pointer :: GW_ratio             (:)   ! FFelfelani Comment: column USGS GW ratio
+     real(r8), pointer :: FEDEPTH              (:)   ! FFelfelani Comment: column FEDEPTH
+     real(r8), pointer :: HGT_M                (:)   ! FFelfelani Comment: column HGT_M
      real(r8), pointer :: bedrock_depth        (:)   ! FFelfelani Comment: column bedrock_depth
      real(r8), pointer :: topo_std             (:)   ! gridcell elevation standard deviation
 
@@ -131,6 +133,8 @@ contains
     allocate(this%n_melt      (begc:endc))                     ; this%n_melt      (:)   = nan 
     allocate(this%topo_slope  (begc:endc))                     ; this%topo_slope  (:)   = nan
     allocate(this%GW_ratio    (begc:endc))                     ; this%GW_ratio    (:)   = nan
+    allocate(this%FEDEPTH     (begc:endc))                     ; this%FEDEPTH     (:)   = nan
+    allocate(this%HGT_M       (begc:endc))                     ; this%HGT_M       (:)   = nan
     allocate(this%bedrock_depth    (begc:endc))                ; this%bedrock_depth    (:)   = nan
     allocate(this%topo_std    (begc:endc))                     ; this%topo_std    (:)   = nan
 
@@ -167,6 +171,8 @@ contains
     deallocate(this%n_melt     )
     deallocate(this%topo_slope )
     deallocate(this%GW_ratio )
+    deallocate(this%FEDEPTH )
+    deallocate(this%HGT_M )
     deallocate(this%bedrock_depth )
     deallocate(this%topo_std   )
     deallocate(this%nbedrock   )
