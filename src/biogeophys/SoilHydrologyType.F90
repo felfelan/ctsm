@@ -4,7 +4,8 @@ Module SoilHydrologyType
   use shr_log_mod           , only : errMsg => shr_log_errMsg
   use abortutils            , only : endrun
   use decompMod             , only : bounds_type
-  use clm_varpar            , only : nlevgrnd, nlayer, nlayert, nlevsoi 
+  use clm_varpar            , only : nlevgrnd, nlayer, nlayert, nlevsoi
+  use clm_time_manager      , only : get_curr_date, get_start_date
   use clm_varcon            , only : spval
   use clm_varctl            , only : iulog
   use LandunitType          , only : lun                
@@ -23,6 +24,7 @@ Module SoilHydrologyType
      ! NON-VIC
      real(r8), pointer :: frost_table_col   (:)     ! col frost table depth                    
      real(r8), pointer :: zwt_col           (:)     ! col water table depth
+     real(r8), pointer :: rechclim_col           (:)     ! col rechclim
      real(r8), pointer :: zwts_col          (:)     ! col water table depth, the shallower of the two water depths
      real(r8), pointer :: zwt_perched_col   (:)     ! col perched water table depth
      real(r8), pointer :: wa_col            (:)     ! col water in the unconfined aquifer (mm)
@@ -31,7 +33,10 @@ Module SoilHydrologyType
      real(r8), pointer :: Pump_wa_col       (:)     ! col pumped water (mm/s)
      real(r8), pointer :: QlatField_northing_grc (:)! grc Groundwater lateral flow towards north (+)(mm)
      real(r8), pointer :: QlatField_easting_grc  (:)! grc Groundwater lateral flow towards east (+)(mm)
+     real(r8), pointer :: Qgw_lateral_grc   (:)     ! grc Groundwater lateral budget (mm)
+     ! real(r8), pointer :: Nneighbors             (:)
      real(r8), pointer :: qcharge_col       (:)     ! col aquifer recharge rate (mm/s) 
+     real(r8), pointer :: qcharge_org_col   (:)     ! col original aquifer recharge rate (mm/s) 
      real(r8), pointer :: fracice_col       (:,:)   ! col fractional impermeability (-)
      real(r8), pointer :: icefrac_col       (:,:)   ! col fraction of ice       
      real(r8), pointer :: fcov_col          (:)     ! col fractional impermeable area
@@ -118,6 +123,7 @@ contains
     allocate(this%num_substeps_col  (begc:endc))                 ; this%num_substeps_col  (:)     = nan
     allocate(this%frost_table_col   (begc:endc))                 ; this%frost_table_col   (:)     = nan
     allocate(this%zwt_col           (begc:endc))                 ; this%zwt_col           (:)     = nan
+    allocate(this%rechclim_col      (begc:endc))                 ; this%rechclim_col      (:)     = nan
     allocate(this%zwt_perched_col   (begc:endc))                 ; this%zwt_perched_col   (:)     = nan
     allocate(this%zwts_col          (begc:endc))                 ; this%zwts_col          (:)     = nan
 
@@ -127,8 +133,11 @@ contains
     allocate(this%Pump_wa_col       (begc:endc))                 ; this%Pump_wa_col       (:)     = nan
     allocate(this%QlatField_northing_grc (begg:endg))            ; this%QlatField_northing_grc(:) = nan
     allocate(this%QlatField_easting_grc  (begg:endg))            ; this%QlatField_easting_grc (:) = nan
+    allocate(this%Qgw_lateral_grc   (begg:endg))                 ; this%Qgw_lateral_grc   (:)     = nan
+    ! allocate(this%Nneighbors (begg:endg))                        ; this%Nneighbors(:) = nan
 	
     allocate(this%qcharge_col       (begc:endc))                 ; this%qcharge_col       (:)     = nan
+    allocate(this%qcharge_org_col   (begc:endc))                 ; this%qcharge_org_col   (:)     = nan
     allocate(this%fracice_col       (begc:endc,nlevgrnd))        ; this%fracice_col       (:,:)   = nan
     allocate(this%icefrac_col       (begc:endc,nlevgrnd))        ; this%icefrac_col       (:,:)   = nan
     allocate(this%fcov_col          (begc:endc))                 ; this%fcov_col          (:)     = nan   
@@ -161,6 +170,7 @@ contains
     !
     ! !USES:
     use histFileMod    , only : hist_addfld1d
+    use decompMod       , only : ldecomp
     !
     ! !ARGUMENTS:
     class(soilhydrology_type) :: this
@@ -184,6 +194,11 @@ contains
          avgflag='A', long_name='Groundwater lateral water in the unconfined aquifer (vegetated landunits only)', &
          ptr_col=this%Qgw_lateral_col, l2g_scale_type='veg')
 
+    this%Qgw_lateral_grc(begg:endg) = spval
+    call hist_addfld1d (fname='Qgw_lateral_grc',  units='mm',  &
+         avgflag='SUM', long_name='Groundwater lateral water in the unconfined aquifer (gridcell level)', &
+         ptr_lnd=this%Qgw_lateral_grc, l2g_scale_type='veg')
+
     this%AqTransmiss_col(begc:endc) = spval
     call hist_addfld1d (fname='Aq_Transmissivity',  units='mm2/s',  &
          avgflag='A', long_name='Transmissivity of the unconfined aquifer (vegetated landunits only)', &
@@ -204,10 +219,20 @@ contains
          avgflag='A', long_name='Eastward groundwater lateral flow', &
          ptr_lnd=this%QlatField_easting_grc, l2g_scale_type='veg')
 
+    ! this%Nneighbors(begg:endg) = spval
+    ! call hist_addfld1d (fname='Nneighbors',  units='unitless',  &
+         ! avgflag='A', long_name='Number of Neighbors', &
+         ! ptr_lnd=ldecomp%gneighbors, l2g_scale_type='veg')
+
     this%qcharge_col(begc:endc) = spval
     call hist_addfld1d (fname='QCHARGE',  units='mm/s',  &
          avgflag='A', long_name='aquifer recharge rate (vegetated landunits only)', &
          ptr_col=this%qcharge_col, l2g_scale_type='veg')
+
+    this%qcharge_org_col(begc:endc) = spval
+    call hist_addfld1d (fname='QCHARGE_ORG',  units='mm/s',  &
+         avgflag='A', long_name='original aquifer recharge rate (vegetated landunits only)', &
+         ptr_col=this%qcharge_org_col, l2g_scale_type='veg')
 
     this%fcov_col(begc:endc) = spval
     call hist_addfld1d (fname='FCOV',  units='unitless',  &
@@ -269,7 +294,13 @@ contains
   subroutine Restart(this, bounds, ncid, flag)
     ! 
     ! !USES:
-    use ncdio_pio  , only : file_desc_t, ncd_io, ncd_double
+    use ncdio_pio  , only : file_desc_t, ncd_io, ncd_double, ncd_pio_openfile
+    use clm_varctl , only : gwFanInit, fsurdat
+	use clm_varcon , only : grlnd
+	use fileutils  , only : getfil
+	use abortutils , only : endrun
+	use spmdMod        , only : masterproc
+	use column_varcon  , only : icol_road_perv
     use restUtilMod
     !
     ! !ARGUMENTS:
@@ -279,8 +310,18 @@ contains
     character(len=*)  , intent(in)    :: flag   ! 'read' or 'write'
     !
     ! !LOCAL VARIABLES:
-    integer :: j,c ! indices
+	integer :: p,c,j,l,g,lev,nlevs ! indices
     logical :: readvar      ! determine if variable is on initial file
+    type(file_desc_t)  :: ncid_srf 
+	character(len=256) :: locfn 
+    real(r8) ,pointer  :: wtd_Fan      (:)   ! read in - WTD	
+    real(r8) ,pointer  :: rechclim_Fan (:)   ! read in - Climatologic Recharge	
+
+    integer :: year, rsyr      ! year (0, ...) for nstep
+    integer :: month, rsmon    ! month (1, ..., 12) for nstep
+	integer :: day, rsday
+    integer :: secs, tod       ! seconds into current date for nstep
+
     !-----------------------------------------------------------------------
 
     call restartvar(ncid=ncid, flag=flag, varname='FROST_TABLE', xtype=ncd_double,  & 
@@ -320,11 +361,89 @@ contains
          dim1name='gridcell', &
          long_name='Eastward groundwater lateral flow', units='mm', &
          interpinic_flag='skip', readvar=readvar, data=this%QlatField_easting_grc)		 
-		 
-    call restartvar(ncid=ncid, flag=flag, varname='ZWT', xtype=ncd_double,  & 
-         dim1name='column', &
-         long_name='water table depth', units='m', &
-         interpinic_flag='interp', readvar=readvar, data=this%zwt_col)
+
+    call get_curr_date (year, month, day, secs)
+	call get_start_date(rsyr, rsmon, rsday, tod)
+
+	if (flag == 'read' .and. gwFanInit == .true. .and. year == rsyr) then
+        if (masterproc) write(iulog,*) '                                        '
+        if (masterproc) write(iulog,*) '****************************************'
+        if (masterproc) write(iulog,*) '****************************************'
+        if (masterproc) write(iulog,*) '****************************************'
+        if (masterproc) write(iulog,*) '                                        '
+        if (masterproc) write(iulog,*) 'GW is initialized by Fan et al. data: Flag ', flag
+		if (masterproc) write(iulog,*) 'year and rsyr: ', year, rsyr
+        if (masterproc) write(iulog,*) '                                        '
+
+         call restartvar(ncid=ncid, flag=flag, varname='ZWT', xtype=ncd_double,  & 
+              dim1name='column', &
+              long_name='water table depth', units='m', &
+              interpinic_flag='interp', readvar=readvar, data=this%zwt_col)
+
+        this%rechclim_col(bounds%begc:bounds%endc) = 0._r8
+		this%zwt_col(bounds%begc:bounds%endc) = 0._r8
+	
+        allocate(wtd_Fan(bounds%begg:bounds%endg))
+        allocate(rechclim_Fan(bounds%begg:bounds%endg))
+
+        call getfil (fsurdat, locfn, 0)
+        call ncd_pio_openfile (ncid_srf, locfn, 0)
+	
+        call ncd_io(ncid=ncid_srf, varname='EQZWT', flag='read', data=wtd_Fan, dim1name=grlnd, readvar=readvar)
+
+		if (.not. readvar) then
+           call endrun(msg=' ERROR: EQZWT NOT on surfdata file'//errMsg(sourcefile, __LINE__)) 
+        end if
+
+        call ncd_io(ncid=ncid_srf, varname='RECHCLIM', flag='read', data=rechclim_Fan, dim1name=grlnd, readvar=readvar)
+
+		if (.not. readvar) then
+           call endrun(msg=' ERROR: RECHCLIM NOT on surfdata file'//errMsg(sourcefile, __LINE__)) 
+        end if
+
+        do c = bounds%begc,bounds%endc
+            g = col%gridcell(c)
+            l = col%landunit(c)
+            if (.not. lun%lakpoi(l)) then  !not lake
+                if (lun%urbpoi(l)) then
+                    if (col%itype(c) == icol_road_perv) then
+                        ! Note that the following hard-coded constants (on the next two lines)
+                        ! seem implicitly related to aquifer_water_baseline
+                        this%zwt_col(c) = wtd_Fan(g)
+					    this%rechclim_col(c) = rechclim_Fan(g)
+                    else
+                        this%zwt_col(c) = spval
+					    this%rechclim_col(c) = spval
+                    end if
+
+                else
+                    ! Note that the following hard-coded constants (on the next two lines) seem
+                    ! implicitly related to aquifer_water_baseline
+                    this%zwt_col(c) = wtd_Fan(g)
+				    this%rechclim_col(c) = rechclim_Fan(g)
+                end if
+            end if
+        end do
+
+        deallocate(wtd_Fan)
+        deallocate(rechclim_Fan)
+
+    else
+        if (masterproc) write(iulog,*) '                                        '
+        if (masterproc) write(iulog,*) '****************************************'
+        if (masterproc) write(iulog,*) '****************************************'
+        if (masterproc) write(iulog,*) '****************************************'
+        if (masterproc) write(iulog,*) '                                        '
+        if (masterproc) write(iulog,*) 'GW is defined/read/written to the restart file: Flag ', flag
+		if (masterproc) write(iulog,*) 'year and rsyr: ', year, rsyr
+        if (masterproc) write(iulog,*) '                                        '
+
+         call restartvar(ncid=ncid, flag=flag, varname='ZWT', xtype=ncd_double,  & 
+              dim1name='column', &
+              long_name='water table depth', units='m', &
+              interpinic_flag='interp', readvar=readvar, data=this%zwt_col)
+
+    end if
 
     call restartvar(ncid=ncid, flag=flag, varname='ZWT_PERCH', xtype=ncd_double,  & 
          dim1name='column', &
