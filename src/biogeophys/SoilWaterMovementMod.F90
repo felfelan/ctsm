@@ -100,7 +100,8 @@ contains
     use fileutils       , only : getavu, relavu
     use spmdMod         , only : mpicom, masterproc
     use shr_mpi_mod     , only : shr_mpi_bcast
-    use clm_varctl      , only : iulog, use_bedrock, groundwater_scheme, use_pumping
+    use clm_varctl      , only : iulog, use_bedrock
+    use clm_varctl      , only : groundwater_scheme, use_pumping, gwFanInit
     use controlMod      , only : NLFilename
     use clm_nlUtilsMod  , only : find_nlgroup_name
 
@@ -126,7 +127,8 @@ contains
          inexpensive,                  &
          flux_calculation,             &
          groundwater_scheme,           &
-         use_pumping
+         use_pumping,                  &
+         gwFanInit
 
     ! Default values for namelist
 
@@ -143,6 +145,7 @@ contains
     flux_calculation=inexpensive  
     groundwater_scheme=gw_default
     use_pumping=.false.
+    gwFanInit = .false.
 	
     ! Read soilwater_movement namelist
     if (masterproc) then
@@ -182,7 +185,8 @@ contains
     call shr_mpi_bcast(upper_boundary_condition, mpicom)
     call shr_mpi_bcast(lower_boundary_condition, mpicom)
     call shr_mpi_bcast(groundwater_scheme, mpicom)
-    call shr_mpi_bcast(use_pumping, mpicom) 
+    call shr_mpi_bcast(use_pumping, mpicom)
+    call shr_mpi_bcast(gwFanInit, mpicom)
     call shr_mpi_bcast(dtmin, mpicom)
     call shr_mpi_bcast(verySmall, mpicom)
     call shr_mpi_bcast(xTolerUpper, mpicom)
@@ -201,6 +205,7 @@ contains
        write(iulog,*) '  lower_boundary_condition   = ',lower_boundary_condition
        write(iulog,*) '  groundwater_scheme         = ',groundwater_scheme
        write(iulog,*) '  use_pumping                = ',use_pumping
+       write(iulog,*) '  gwFanInit                  = ',gwFanInit
 	   
        write(iulog,*) '  use_bedrock                = ',use_bedrock
        write(iulog,*) '  dtmin                      = ',dtmin
@@ -501,6 +506,7 @@ contains
     use ColumnType                 , only : col
     use clm_varctl                 , only : iulog
     use SoilWaterPlantSinkMod      , only : COmpute_EffecRootFrac_And_VertTranSink
+	use spmdMod                    , only : iam
     !
     ! !ARGUMENTS:
     type(bounds_type)       , intent(in)    :: bounds               ! bounds
@@ -575,7 +581,8 @@ contains
          dz                =>    col%dz                             , & ! Input:  [real(r8) (:,:) ]  layer thickness (m)                             
 
          origflag          =>    soilhydrology_inst%origflag        , & ! Input:  constant
-         qcharge           =>    soilhydrology_inst%qcharge_col     , & ! Input:  [real(r8) (:)   ]  aquifer recharge rate (mm/s)                      
+         qcharge           =>    soilhydrology_inst%qcharge_col     , & ! Input:  [real(r8) (:)   ]  aquifer recharge rate (mm/s)  
+         qcharge_org       =>    soilhydrology_inst%qcharge_org_col , & ! Input:  [real(r8) (:)   ]  original aquifer recharge rate (mm/s)
          zwt               =>    soilhydrology_inst%zwt_col         , & ! Input:  [real(r8) (:)   ]  water table depth (m)                             
          fracice           =>    soilhydrology_inst%fracice_col     , & ! Input:  [real(r8) (:,:) ]  fractional impermeability (-)                   
          icefrac           =>    soilhydrology_inst%icefrac_col     , & ! Input:  [real(r8) (:,:) ]  fraction of ice                                 
@@ -962,12 +969,31 @@ contains
                qcharge(c) = -ka * (wh_zwt-wh)/((zwt(c)-z(c,jwt(c)))*1000._r8*2.0)
             endif
 
+            !if (qcharge(c) > 10.0_r8/dtime) then
+            !    write(*,'(a60, i8, i8, i8, f20.6, f20.6)') 'within; iam, c, jwt, qcharge, qcharge mm/d: ', iam, c, jwt(c), qcharge(c), qcharge(c) * 24._r8 * 3600._r8
+            !    write(*,'(a60, i8, i8, f20.6, f20.6, f20.6)') 'within; iam, c, -ka, (wh_zwt-wh), (zwt(c)-z(c,jwt(c)): ', iam, c, -ka, (wh_zwt-wh), ((zwt(c)-z(c,jwt(c)))*1000._r8*2.0)
+            !    write(*,'(a60, i8, i8, f20.6, f20.6)') 'within; iam, c, hksat, imped: ', iam, c, hksat(c,jwt(c)+1), imped(c,jwt(c)+1)
+            !endif
+
+
             ! To limit qcharge  (for the first several timesteps)
             qcharge(c) = max(-10.0_r8/dtime,qcharge(c))
             qcharge(c) = min( 10.0_r8/dtime,qcharge(c))
+			
+			qcharge_org(c) = qcharge(c)
+			
          else
             ! if water table is below soil column, compute qcharge from dwat2(11)
             qcharge(c) = dwat2(c,nlevsoi+1)*dzmm(c,nlevsoi+1)/dtime
+			
+			qcharge_org(c) = qcharge(c)
+
+            !if (qcharge(c) > 10.0_r8/dtime) then
+            !    write(*,'(a60, i8, i8, i8, f20.6, f20.6)') 'below; iam, c, jwt, qcharge, qcharge mm/d: ', iam, c, jwt(c), qcharge(c), qcharge(c) * 24._r8 * 3600._r8
+            !    write(*,'(a60, i8, i8, f20.6, f20.6)') 'below; iam, c, dwat2, dzmm/dtime: ', iam, c, dwat2(c,nlevsoi+1), dzmm(c,nlevsoi+1)/dtime
+            !endif
+
+
          endif
       end do
 
@@ -1174,13 +1200,15 @@ contains
 
          nsubsteps         =>    soilhydrology_inst%num_substeps_col, & ! Input:  [real(r8) (:)   ]  adaptive timestep counter
 
-         qcharge           =>    soilhydrology_inst%qcharge_col     , & ! Input:  [real(r8) (:)   ]  aquifer recharge rate (mm/s)                      
+         qcharge           =>    soilhydrology_inst%qcharge_col     , & ! Input:  [real(r8) (:)   ]  aquifer recharge rate (mm/s)
+         qcharge_org       =>    soilhydrology_inst%qcharge_org_col , & ! Input:  [real(r8) (:)   ]  original aquifer recharge rate (mm/s)
          zwt               =>    soilhydrology_inst%zwt_col         , & ! Input:  [real(r8) (:)   ]  water table depth (m)                             
 
          smp_l             =>    soilstate_inst%smp_l_col           , & ! Input:  [real(r8) (:,:) ]  soil matrix potential [mm]                      
          hk_l              =>    soilstate_inst%hk_l_col            , & ! Input:  [real(r8) (:,:) ]  hydraulic conductivity (mm/s)                   
          h2osoi_ice        =>    waterstate_inst%h2osoi_ice_col     , & ! Input:  [real(r8) (:,:) ]  ice water (kg/m2)                               
-         h2osoi_liq        =>    waterstate_inst%h2osoi_liq_col     , & ! Input:  [real(r8) (:,:) ]  liquid water (kg/m2)                            
+         h2osoi_liq        =>    waterstate_inst%h2osoi_liq_col     , & ! Input:  [real(r8) (:,:) ]  liquid water (kg/m2)
+         qflx_infl         =>    waterflux_inst%qflx_infl_col       , & ! Input:  [real(r8) (:)   ]  infiltration (mm H2O /s)
          qflx_rootsoi_col  =>    waterflux_inst%qflx_rootsoi_col      &
          )  ! end associate statement
 
@@ -1432,7 +1460,7 @@ contains
 
          call compute_qcharge(bounds, &
               num_hydrologyc, filter_hydrologyc, soilhydrology_inst, &
-              soilstate_inst, waterstate_inst, &
+              soilstate_inst, waterstate_inst, waterflux_inst, &
               soil_water_retention_curve, &
               dwat(bounds%begc:bounds%endc,1:nlevsoi), &
               smp(bounds%begc:bounds%endc,1:nlevsoi), &
@@ -1440,6 +1468,14 @@ contains
               vwc_liq(bounds%begc:bounds%endc,1:nlevsoi))
 
       endif
+
+      !!!!! main spatial loop
+      !do fc = 1, num_hydrologyc
+         !c = filter_hydrologyc(fc)
+		 !!!!! Farshid Felfelani: To limit qcharge  (for the first several timesteps)
+         !qcharge(c) = min(qflx_infl(c), qcharge(c))
+
+      !end do  ! spatial loop
 
     end associate
 
@@ -2024,7 +2060,7 @@ contains
 !-----------------------------------------------------------------------
    subroutine compute_qcharge(bounds, num_hydrologyc, &
         filter_hydrologyc, soilhydrology_inst, soilstate_inst, &
-        waterstate_inst, soil_water_retention_curve, &
+        waterstate_inst, waterflux_inst, soil_water_retention_curve, &
         dwat, smp, imped, vwc_liq)
     !
     ! !DESCRIPTION:
@@ -2036,7 +2072,7 @@ contains
     use shr_const_mod        , only : SHR_CONST_TKFRZ, SHR_CONST_LATICE, SHR_CONST_G
     use abortutils           , only : endrun
     use decompMod            , only : bounds_type
-    use clm_time_manager     , only : get_step_size
+    use clm_time_manager     , only : get_step_size, get_curr_date, get_start_date
     use clm_varpar           , only : nlevsoi
     use SoilWaterRetentionCurveMod, only : soil_water_retention_curve_type
     use SoilStateType        , only : soilstate_type
@@ -2054,7 +2090,8 @@ contains
 
     type(soilhydrology_type), intent(in) :: soilhydrology_inst
     type(soilstate_type)    , intent(in) :: soilstate_inst
-    type(waterstate_type)    , intent(in) :: waterstate_inst
+    type(waterstate_type)   , intent(in) :: waterstate_inst
+	type(waterflux_type)    , intent(in) :: waterflux_inst
 
 !    integer,  intent(in)  :: soil_hydraulic_properties_method
     class(soil_water_retention_curve_type), intent(in) :: soil_water_retention_curve
@@ -2076,17 +2113,24 @@ contains
     real(r8) :: s1            !temporary variable
     real(r8) :: dz_aquifer        !temporary variable
 
+    integer :: year, rsyr      ! year (0, ...) for nstep
+    integer :: month, rsmon    ! month (1, ..., 12) for nstep
+	integer :: day, rsday
+    integer :: secs, tod       ! seconds into current date for nstep
+
     character(len=32)  :: subname = 'compute_qcharge'     ! subroutine name   
     !-----------------------------------------------------------------------
 
     associate(&
-         qcharge           =>    soilhydrology_inst%qcharge_col     , & ! Input:  [real(r8) (:)   ]  aquifer recharge rate (mm/s)                      
-         wa                => soilhydrology_inst%wa_col             , & ! Input:  [real(r8) (:)   ]  water in the unconfined aquifer (mm)              
+         qcharge           =>    soilhydrology_inst%qcharge_col     , & ! Input:  [real(r8) (:)   ]  aquifer recharge rate (mm/s)
+         qcharge_org       =>    soilhydrology_inst%qcharge_org_col , & ! Input:  [real(r8) (:)   ]  original aquifer recharge rate (mm/s)
+         wa                =>    soilhydrology_inst%wa_col          , & ! Input:  [real(r8) (:)   ]  water in the unconfined aquifer (mm)              
          zwt               =>    soilhydrology_inst%zwt_col         , & ! Input:  [real(r8) (:)   ]  water table depth (m)                             
          sucsat            =>    soilstate_inst%sucsat_col          , & ! Input:  [real(r8) (:,:) ]  minimum soil suction (mm)                       
          watsat            =>    soilstate_inst%watsat_col          , & ! Input:  [real(r8) (:,:) ]  volumetric soil water at saturation (porosity)  
          smpmin            =>    soilstate_inst%smpmin_col          , & ! Input:  [real(r8) (:)   ]  restriction for min of soil potential (mm)        
          h2osoi_vol        =>    waterstate_inst%h2osoi_vol_col     , & ! Input:  [real(r8) (:,:) ]  volumetric soil water (0<=h2osoi_vol<=watsat) [m3/m3]
+		 qflx_infl         =>    waterflux_inst%qflx_infl_col       , & ! Input:  [real(r8) (:)   ]  infiltration (mm H2O /s)
          z                 =>    col%z                              , & ! Input:  [real(r8) (:,:) ]  layer depth (m)                                 
          zi                =>    col%zi                               & ! Input:  [real(r8) (:,:) ]  layer interface depth (m)                                 
          )  ! end associate statement
@@ -2135,6 +2179,27 @@ contains
             ! To limit qcharge  (for the first several timesteps)
             qcharge(c) = max(-10.0_r8/dtime,qcharge(c))
             qcharge(c) = min( 10.0_r8/dtime,qcharge(c))
+
+            call get_curr_date (year, month, day, secs)
+	        call get_start_date(rsyr, rsmon, rsday, tod)
+
+            !!!!! Farshid Felfelani Start: To limit qcharge  (for the first several timesteps)
+            !if (year == rsyr .and. month <= 3) then
+		    !!!!! if (qflx_infl(c) > 0._r8 .and. qcharge(c) > qflx_infl(c) .and. jwt(c) == nlevsoi) then
+            !if (qcharge(c) > qflx_infl(c)) then
+                !qcharge(c) = min(qflx_infl(c), qcharge(c))
+		    !end if
+			!end if
+			
+			qcharge_org(c) = qcharge(c)
+
+            if (qcharge(c) > 0._r8 .and. qcharge(c) > (100.0_r8*abs(qflx_infl(c)))) then
+               qcharge(c) = min(abs(qflx_infl(c)), qcharge(c))
+            endif
+		
+		 else
+            qcharge_org(c) = qcharge(c)
+            !!!!! Farshid Felfelani End
          endif
 
       end do
