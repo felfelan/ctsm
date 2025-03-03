@@ -128,6 +128,7 @@ contains
      use clm_time_manager  , only : get_nstep_since_startup_or_lastDA_restart_or_pause
      use clm_instMod       , only : surfalb_inst
      use CanopyStateType   , only : canopystate_type
+     use decompMod       , only : ldecomp
      use subgridAveMod
      !
      ! !ARGUMENTS:
@@ -368,6 +369,17 @@ contains
              write(iulog,*)'gridcell                   = ',g
              write(iulog,*)'grc%latdeg(g)              = ',grc%latdeg(g)
              write(iulog,*)'grc%londeg(g)              = ',grc%londeg(g)
+             write(iulog,*)'grc%stdelev(g)             = ',grc%stdelev(g)
+             write(iulog,*)'grc%slopelev(g)            = ',grc%slopelev(g)
+             write(iulog,*) 'groundwater_scheme        = ',groundwater_scheme
+             write(iulog,*)'ldecomp%gtopUP(g)       = ',ldecomp%gtopUP(g)
+             write(iulog,*)'ldecomp%gbotUP(g)       = ',ldecomp%gbotUP(g)
+             write(iulog,*)'ldecomp%grgtUP(g)       = ',ldecomp%grgtUP(g)
+             write(iulog,*)'ldecomp%glftUP(g)       = ',ldecomp%glftUP(g)
+             write(iulog,*)'ldecomp%gtoplftUP(g)       = ',ldecomp%gtoplftUP(g)
+             write(iulog,*)'ldecomp%gtoprgtUP(g)       = ',ldecomp%gtoprgtUP(g)
+             write(iulog,*)'ldecomp%gbotlftUP(g)       = ',ldecomp%gbotlftUP(g)
+             write(iulog,*)'ldecomp%gbotrgtUP(g)       = ',ldecomp%gbotrgtUP(g)
              write(iulog,*)'soilhydrology_inst%zwt_col = ',soilhydrology_inst%zwt_col(indexc)
              write(iulog,*)'soilhydrology_inst%wa_col  = ',soilhydrology_inst%wa_col(indexc)
              write(iulog,*)'nstep                      = ',nstep
