@@ -124,6 +124,14 @@ module decompMod
      integer,pointer :: gtoprgt(:)       ! gridcell index of the right neighbor
      integer,pointer :: gbotlft(:)       ! gridcell index of the right neighbor
      integer,pointer :: gbotrgt(:)       ! gridcell index of the right neighbor
+     real(r8),pointer :: gtopUP(:)       ! Uphill/downhill; the top neighbor
+     real(r8),pointer :: gbotUP(:)       ! Uphill/downhill; the bottom neighbor
+     real(r8),pointer :: glftUP(:)       ! Uphill/downhill; the left neighbor
+     real(r8),pointer :: grgtUP(:)       ! Uphill/downhill; the right neighbor
+     real(r8),pointer :: gtoplftUP(:)       ! Uphill/downhill; the right neighbor
+     real(r8),pointer :: gtoprgtUP(:)       ! Uphill/downhill; the right neighbor
+     real(r8),pointer :: gbotlftUP(:)       ! Uphill/downhill; the right neighbor
+     real(r8),pointer :: gbotrgtUP(:)       ! Uphill/downhill; the right neighbor
      real(r8),pointer:: gneighbors(:) ! total number of neighbors
      real(r8),pointer:: glat(:)       ! latitude of the the cell g --- global array
      real(r8),pointer::	glon(:)       ! longitude of the the cell g --- global array 
