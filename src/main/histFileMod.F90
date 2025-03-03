@@ -2475,6 +2475,7 @@ contains
     ! !USES:
     use clm_varcon      , only : zsoi, zlak, secspday, isecspday, isecsphr, isecspmin
     use domainMod       , only : ldomain, lon1d, lat1d
+    use decompMod       , only : ldecomp
     use clm_time_manager, only : get_nstep, get_curr_date, get_curr_time
     use clm_time_manager, only : get_ref_date, get_calendar, NO_LEAP_C, GREGORIAN_C
     use FatesInterfaceMod, only : fates_hdim_levsclass
@@ -2759,6 +2760,17 @@ contains
               missing_value=spval, fill_value=spval)
        end if
        if (ldomain%isgrid2d) then
+          call ncd_defvar(varname='Nneighbors', xtype=tape(t)%ncprec, &
+              dim1name='lon', dim2name='lat',&
+              long_name='Number of Neighbors', units='unitless', ncid=nfid(t), &
+              missing_value=spval, fill_value=spval)
+       else
+          call ncd_defvar(varname='Nneighbors', xtype=tape(t)%ncprec, &
+              dim1name=grlnd, &
+              long_name='Number of Neighbors', units='unitless', ncid=nfid(t), &
+              missing_value=spval, fill_value=spval)
+       end if
+       if (ldomain%isgrid2d) then
           call ncd_defvar(varname='landfrac', xtype=tape(t)%ncprec, &
               dim1name='lon', dim2name='lat', &
               long_name='land fraction', ncid=nfid(t), &
@@ -2802,6 +2814,98 @@ contains
               long_name='index of shallowest bedrock layer', ncid=nfid(t), &
               imissing_value=ispval, ifill_value=ispval)
        end if
+
+
+
+       if (ldomain%isgrid2d) then
+          call ncd_defvar(varname='gtopUP', xtype=tape(t)%ncprec, &
+              dim1name='lon', dim2name='lat', &
+              long_name='gtopUP', ncid=nfid(t), &
+              missing_value=spval, fill_value=spval)
+       else
+          call ncd_defvar(varname='gtopUP', xtype=tape(t)%ncprec, &
+              dim1name=grlnd, &
+              long_name='gtopUP', ncid=nfid(t), &
+              missing_value=spval, fill_value=spval)
+       end if
+       if (ldomain%isgrid2d) then
+          call ncd_defvar(varname='gbotUP', xtype=tape(t)%ncprec, &
+              dim1name='lon', dim2name='lat', &
+              long_name='gbotUP', ncid=nfid(t), &
+              missing_value=spval, fill_value=spval)
+       else
+          call ncd_defvar(varname='gbotUP', xtype=tape(t)%ncprec, &
+              dim1name=grlnd, &
+              long_name='gbotUP', ncid=nfid(t), &
+              missing_value=spval, fill_value=spval)
+       end if
+       if (ldomain%isgrid2d) then
+          call ncd_defvar(varname='glftUP', xtype=tape(t)%ncprec, &
+              dim1name='lon', dim2name='lat', &
+              long_name='glftUP', ncid=nfid(t), &
+              missing_value=spval, fill_value=spval)
+       else
+          call ncd_defvar(varname='glftUP', xtype=tape(t)%ncprec, &
+              dim1name=grlnd, &
+              long_name='glftUP', ncid=nfid(t), &
+              missing_value=spval, fill_value=spval)
+       end if
+       if (ldomain%isgrid2d) then
+          call ncd_defvar(varname='grgtUP', xtype=tape(t)%ncprec, &
+              dim1name='lon', dim2name='lat', &
+              long_name='grgtUP', ncid=nfid(t), &
+              missing_value=spval, fill_value=spval)
+       else
+          call ncd_defvar(varname='grgtUP', xtype=tape(t)%ncprec, &
+              dim1name=grlnd, &
+              long_name='grgtUP', ncid=nfid(t), &
+              missing_value=spval, fill_value=spval)
+       end if
+       if (ldomain%isgrid2d) then
+          call ncd_defvar(varname='gtoplftUP', xtype=tape(t)%ncprec, &
+              dim1name='lon', dim2name='lat', &
+              long_name='gtoplftUP', ncid=nfid(t), &
+              missing_value=spval, fill_value=spval)
+       else
+          call ncd_defvar(varname='gtoplftUP', xtype=tape(t)%ncprec, &
+              dim1name=grlnd, &
+              long_name='gtoplftUP', ncid=nfid(t), &
+              missing_value=spval, fill_value=spval)
+       end if
+       if (ldomain%isgrid2d) then
+          call ncd_defvar(varname='gtoprgtUP', xtype=tape(t)%ncprec, &
+              dim1name='lon', dim2name='lat', &
+              long_name='gtoprgtUP', ncid=nfid(t), &
+              missing_value=spval, fill_value=spval)
+       else
+          call ncd_defvar(varname='gtoprgtUP', xtype=tape(t)%ncprec, &
+              dim1name=grlnd, &
+              long_name='gtoprgtUP', ncid=nfid(t), &
+              missing_value=spval, fill_value=spval)
+       end if
+       if (ldomain%isgrid2d) then
+          call ncd_defvar(varname='gbotlftUP', xtype=tape(t)%ncprec, &
+              dim1name='lon', dim2name='lat', &
+              long_name='gbotlftUP', ncid=nfid(t), &
+              missing_value=spval, fill_value=spval)
+       else
+          call ncd_defvar(varname='gbotlftUP', xtype=tape(t)%ncprec, &
+              dim1name=grlnd, &
+              long_name='gbotlftUP', ncid=nfid(t), &
+              missing_value=spval, fill_value=spval)
+       end if
+       if (ldomain%isgrid2d) then
+          call ncd_defvar(varname='gbotrgtUP', xtype=tape(t)%ncprec, &
+              dim1name='lon', dim2name='lat', &
+              long_name='gbotrgtUP', ncid=nfid(t), &
+              missing_value=spval, fill_value=spval)
+       else
+          call ncd_defvar(varname='gbotrgtUP', xtype=tape(t)%ncprec, &
+              dim1name=grlnd, &
+              long_name='gbotrgtUP', ncid=nfid(t), &
+              missing_value=spval, fill_value=spval)
+       end if
+
 
     else if (mode == 'write') then
 
@@ -2819,7 +2923,18 @@ contains
        call ncd_io(varname='landfrac', data=ldomain%frac, dim1name=grlnd, ncid=nfid(t), flag='write')
        call ncd_io(varname='landmask', data=ldomain%mask, dim1name=grlnd, ncid=nfid(t), flag='write')
        call ncd_io(varname='pftmask' , data=ldomain%pftm, dim1name=grlnd, ncid=nfid(t), flag='write')
+
+       call ncd_io(varname='gtopUP' , data=ldecomp%gtopUP, dim1name=grlnd, ncid=nfid(t), flag='write')
+       call ncd_io(varname='gbotUP' , data=ldecomp%gbotUP, dim1name=grlnd, ncid=nfid(t), flag='write')
+       call ncd_io(varname='glftUP' , data=ldecomp%glftUP, dim1name=grlnd, ncid=nfid(t), flag='write')
+       call ncd_io(varname='grgtUP' , data=ldecomp%grgtUP, dim1name=grlnd, ncid=nfid(t), flag='write')
+       call ncd_io(varname='gtoplftUP' , data=ldecomp%gtoplftUP, dim1name=grlnd, ncid=nfid(t), flag='write')
+       call ncd_io(varname='gtoprgtUP' , data=ldecomp%gtoprgtUP, dim1name=grlnd, ncid=nfid(t), flag='write')
+       call ncd_io(varname='gbotlftUP' , data=ldecomp%gbotlftUP, dim1name=grlnd, ncid=nfid(t), flag='write')
+       call ncd_io(varname='gbotrgtUP' , data=ldecomp%gbotrgtUP, dim1name=grlnd, ncid=nfid(t), flag='write')
+
        call ncd_io(varname='nbedrock' , data=grc%nbedrock, dim1name=grlnd, ncid=nfid(t), flag='write')
+       call ncd_io(varname='Nneighbors' , data=grc%NoNeighbors, dim1name=grlnd, ncid=nfid(t), flag='write')
 
     end if  ! (define/write mode
 
