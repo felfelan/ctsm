@@ -7,10 +7,12 @@ module SoilHydrologyInitTimeConstMod
   ! !USES
   use shr_kind_mod      , only : r8 => shr_kind_r8
   use shr_log_mod       , only : errMsg => shr_log_errMsg
-  use decompMod         , only : bounds_type
+  use decompMod         , only : bounds_type, get_proc_bounds, get_proc_clumps, get_clump_bounds
   use SoilHydrologyType , only : soilhydrology_type
+  use SoilStateType     , only : soilstate_type
   use LandunitType      , only : lun                
-  use ColumnType        , only : col                
+  use ColumnType        , only : col
+  use filterMod         , only : filter
   !
   implicit none
   private
@@ -30,7 +32,7 @@ module SoilHydrologyInitTimeConstMod
 contains
 
   !-----------------------------------------------------------------------
-  subroutine SoilHydrologyInitTimeConst(bounds, soilhydrology_inst) 
+  subroutine SoilHydrologyInitTimeConst(bounds, soilhydrology_inst, soilstate_inst) 
     !
     ! !USES:
     use shr_const_mod   , only : shr_const_pi
@@ -47,14 +49,26 @@ contains
     use fileutils       , only : getfil
     use organicFileMod  , only : organicrd 
     use ncdio_pio       , only : file_desc_t, ncd_io, ncd_pio_openfile, ncd_pio_closefile
+	use GroundwaterMod  , only : groundwater_type
+	use decompMod       , only : get_proc_clumps
+	use spmdMod         , only : MPI_REAL8, MPI_SUM, mpicom, MPI_INTEGER
     !
     ! !ARGUMENTS:
     type(bounds_type)        , intent(in)    :: bounds                                    
     type(soilhydrology_type) , intent(inout) :: soilhydrology_inst
+	!integer                  , intent(in)    :: num_hydrologyc       ! number of column soil points in column filter
+	!integer                  , intent(in)    :: filter_hydrologyc(:) ! column filter for soil points
+	type(soilstate_type)     , intent(in)    :: soilstate_inst
+	! type(groundwater_type)                   :: groundwater_inst
+	! type(bounds_type)                        :: bounds_clump
+	
     !
     ! !LOCAL VARIABLES:
     integer            :: p,c,j,l,g,lev,nlevs 
-    integer            :: ivic,ivicstrt,ivicend   
+    integer            :: ivic,ivicstrt,ivicend, nc, NITER, ier
+	integer            :: num_hydrologyc
+	integer, pointer   :: filter_hydrologyc(:)   ! hydrology filter (columns)
+	integer            :: nclumps                 ! number of clumps on this processor
     real(r8)           :: maxslope, slopemax, minslope
     real(r8)           :: d, fd, dfdd, slope0,slopebeta
     real(r8) ,pointer  :: tslope(:)  
@@ -78,26 +92,42 @@ contains
     real(r8) ,pointer  :: zsoifl     (:)   ! original soil midpoint 
     real(r8) ,pointer  :: dzsoifl    (:)   ! original soil thickness
 	
-    real(r8) ,pointer  :: wtd_Fan    (:)   ! read in - WTD	
+    real(r8) ,pointer  :: wtd_Fan    (:)   ! read in - WTD
+	real(r8) ,pointer  :: rechclim_Fan (:)   ! read in - climatological recharge
+	real(r8) ,pointer  :: fdrai_calval (:)   ! read in - Bisht Calibrated fdrai
     !-----------------------------------------------------------------------
     ! -----------------------------------------------------------------
     ! Initialize frost table
     ! -----------------------------------------------------------------
 
     soilhydrology_inst%wa_col(bounds%begc:bounds%endc)  = aquifer_water_baseline
+	soilhydrology_inst%rechclim_col(bounds%begc:bounds%endc) = 0._r8
     soilhydrology_inst%zwt_col(bounds%begc:bounds%endc) = 0._r8
     soilhydrology_inst%Qgw_lateral_col(bounds%begc:bounds%endc) = 0._r8
     soilhydrology_inst%AqTransmiss_col(bounds%begc:bounds%endc) = 0._r8
     soilhydrology_inst%Pump_wa_col(bounds%begc:bounds%endc) = 0._r8
 
     allocate(wtd_Fan(bounds%begg:bounds%endg))
+    allocate(rechclim_Fan(bounds%begg:bounds%endg))
+    allocate(fdrai_calval(bounds%begg:bounds%endg))
     call getfil (fsurdat, locfn, 0)
     call ncd_pio_openfile (ncid, locfn, 0)
 
-    call ncd_io(ncid=ncid, varname='WTD', flag='read', data=wtd_Fan, dim1name=grlnd, readvar=readvar)
+    call ncd_io(ncid=ncid, varname='EQZWT', flag='read', data=wtd_Fan, dim1name=grlnd, readvar=readvar)
     if (.not. readvar) then
-       call endrun(msg=' ERROR: WTD NOT on surfdata file'//errMsg(sourcefile, __LINE__)) 
-    end if	
+       call endrun(msg=' ERROR: EQZWT NOT on surfdata file'//errMsg(sourcefile, __LINE__)) 
+    end if
+
+    call ncd_io(ncid=ncid, varname='RECHCLIM', flag='read', data=rechclim_Fan, dim1name=grlnd, readvar=readvar)
+    if (.not. readvar) then
+        call endrun(msg=' ERROR: RECHCLIM NOT on surfdata file'//errMsg(sourcefile, __LINE__)) 
+    end if
+
+    call ncd_io(ncid=ncid, varname='fdrai_cal', flag='read', data=fdrai_calval, dim1name=grlnd, readvar=readvar)
+    if (.not. readvar) then
+        call endrun(msg=' ERROR: fdrai_cal NOT on surfdata file'//errMsg(sourcefile, __LINE__)) 
+    end if
+
     !do c = bounds%begc, bounds%endc
     !   g = col%gridcell(c)
     !   soilstate_inst%wtdFan_col(c) = wtd_Fan(g)
@@ -115,9 +145,11 @@ contains
                 soilhydrology_inst%wa_col(c)  = 4800._r8
                 !soilhydrology_inst%zwt_col(c) = (25._r8 + col%zi(c,nlevsoi)) - soilhydrology_inst%wa_col(c)/0.2_r8 /1000._r8  ! One meter below soil column
                 soilhydrology_inst%zwt_col(c) = wtd_Fan(g)
+				soilhydrology_inst%rechclim_col(c) = rechclim_Fan(g)
              else
                 soilhydrology_inst%wa_col(c)  = spval
                 soilhydrology_inst%zwt_col(c) = spval
+				soilhydrology_inst%rechclim_col(c) = spval
              end if
              ! initialize frost_table, zwt_perched
              soilhydrology_inst%zwt_perched_col(c) = spval
@@ -128,6 +160,7 @@ contains
              soilhydrology_inst%wa_col(c)  = 4000._r8
              !soilhydrology_inst%zwt_col(c) = (25._r8 + col%zi(c,nlevsoi)) - soilhydrology_inst%wa_col(c)/0.2_r8 /1000._r8  ! One meter below soil column
              soilhydrology_inst%zwt_col(c) = wtd_Fan(g)
+			 soilhydrology_inst%rechclim_col(c) = rechclim_Fan(g)
              !write(*,*) 'Felfelani      WTD Fan et al soilhydrology_inst%zwt_col(c), wtd_Fan(g)', soilhydrology_inst%zwt_col(c), wtd_Fan(g)
 			 
              ! initialize frost_table, zwt_perched to bottom of soil column
@@ -137,7 +170,23 @@ contains
        end if
     end do
     deallocate(wtd_Fan)
+    deallocate(rechclim_Fan)
+
+    ! nclumps = get_proc_clumps()
+    ! do NITER=1,500
+    ! do nc = 1,nclumps
 	
+	   ! call get_clump_bounds(nc, bounds_clump)
+	
+       !!!!! num_hydrologyc = filter(nc)%num_hydrologyc 
+	   !!!!! filter_hydrologyc = filter(nc)%hydrologyc
+       ! call groundwater_inst%GWFanLatSpinup(bounds_clump, filter(nc)%num_hydrologyc , filter(nc)%hydrologyc,&
+         ! soilhydrology_inst, soilstate_inst)
+
+    ! end do
+	! call mpi_barrier(mpicom,ier)
+	! end do
+
     ! Initialize VIC variables
 
     if (use_vichydro) then
@@ -344,6 +393,7 @@ contains
 
     associate(micro_sigma => col%micro_sigma)
       do c = bounds%begc, bounds%endc
+	     g = col%gridcell(c)
          
          ! determine h2osfc threshold ("fill & spill" concept)
          ! set to zero for no h2osfc (w/frac_infclust =large)
@@ -369,8 +419,9 @@ contains
 
          ! set decay factor
          soilhydrology_inst%hkdepth_col(c) = 1._r8/2.5_r8
-
+         !soilhydrology_inst%hkdepth_col(c) = 1._r8/fdrai_calval(g)
       end do
+	  deallocate(fdrai_calval)
     end associate
 
   end subroutine SoilhydrologyInitTimeConst
