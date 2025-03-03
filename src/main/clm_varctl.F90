@@ -245,6 +245,7 @@ module clm_varctl
   character(len=16), public :: soil_layerstruct = '10SL_3.5m'
   integer          , public :: groundwater_scheme = 0
   logical,           public :: use_pumping = .false. ! true => use spatially variable pumping
+  logical,           public :: gwFanInit = .false. ! true => use spatially variable DTW from Fan
   !----------------------------------------------------------
   ! plant hydraulic stress switch
   !----------------------------------------------------------
