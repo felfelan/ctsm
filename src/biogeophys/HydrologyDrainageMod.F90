@@ -52,8 +52,9 @@ contains
     use clm_varctl       , only : use_vichydro, use_pumping
     use clm_varpar       , only : nlevgrnd, nlevurb
     use clm_time_manager , only : get_step_size, get_nstep
-    use SoilHydrologyMod , only : CLMVICMap, Drainage, PerchedLateralFlow, LateralFlowPowerLaw
+    use SoilHydrologyMod , only : CLMVICMap, Drainage, DrainageFFLinSatThick, PerchedLateralFlow, LateralFlowPowerLaw
     use SoilWaterMovementMod , only : use_aquifer_layer
+	use spmdMod        , only : masterproc, mpicom
     !
     ! !ARGUMENTS:
     type(bounds_type)        , intent(in)    :: bounds               
@@ -76,7 +77,7 @@ contains
     type(glacier_smb_type)   , intent(in)    :: glacier_smb_inst
     !
     ! !LOCAL VARIABLES:
-    integer  :: g,l,c,j,fc                 ! indices
+    integer  :: g,l,c,j,fc, nstep          ! indices
     real(r8) :: dtime                      ! land model time step (sec)
     !-----------------------------------------------------------------------
 
@@ -121,6 +122,7 @@ contains
       ! Determine time step and step size
 
       dtime = get_step_size()
+	  nstep = get_nstep()
 
       if (use_vichydro) then
          call CLMVICMap(bounds, num_hydrologyc, filter_hydrologyc, &
@@ -132,6 +134,22 @@ contains
               num_urbanc, filter_urbanc,&
               temperature_inst, soilhydrology_inst, soilstate_inst, &
               waterstate_inst, waterflux_inst)
+      !   call DrainageFFLinSatThick(bounds, num_hydrologyc, filter_hydrologyc, &
+      !        num_urbanc, filter_urbanc,&
+      !        temperature_inst, soilhydrology_inst, soilstate_inst, &
+      !        waterstate_inst, waterflux_inst)
+
+	    if (nstep == 1) then
+            if (masterproc) write(iulog,*) '****************************************'
+            if (masterproc) write(iulog,*) '****************************************'
+            if (masterproc) write(iulog,*) '****************************************'
+            if (masterproc) write(iulog,*) '                                        '
+	        if (masterproc) write(iulog,*) 'Drainage Mode is FF Old!!!!!!!!!!!!!!!!!'
+            if (masterproc) write(iulog,*) '                                        '
+
+         end if
+
+
       else
          
          call PerchedLateralFlow(bounds, num_hydrologyc, filter_hydrologyc, &
