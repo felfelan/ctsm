@@ -257,6 +257,9 @@ attributes from the config_cache.xml file (with keys converted to upper-case).
 <use_pumping phys="clm4_5">.false.</use_pumping>
 <use_pumping phys="clm5_0">.false.</use_pumping>
 
+<gwFanInit phys="clm4_5">.false.</gwFanInit>
+<gwFanInit phys="clm5_0">.false.</gwFanInit>
+
 <dtmin>60.</dtmin>      
 <verySmall>1.e-8</verySmall>
 <xTolerUpper>1.e-1</xTolerUpper> 
