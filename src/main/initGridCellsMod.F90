@@ -190,6 +190,7 @@ contains
 
        do gdc = bounds_clump%begg,bounds_clump%endg
           grc%gindex(gdc) = ldecomp%gdc2glo(gdc)
+          ! grc%NoNeighbors(gdc) = ldecomp%gneighbors(gdc)
           grc%area(gdc)   = ldomain%area(gdc)
           grc%latdeg(gdc) = ldomain%latc(gdc) 
           grc%londeg(gdc) = ldomain%lonc(gdc) 
