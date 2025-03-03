@@ -371,6 +371,11 @@ TODO(bja, 2019-05) these should be strings so they have meaningful names instead
 Activate/deactivate pumping scheme.
 </entry>
 
+<entry id="gwFanInit" type="logical" category="clm_physics"
+       group="soilwater_movement_inparm" valid_values="" >
+Activate/deactivate Fan GW initialization.
+</entry>
+
 <entry id="dtmin" type="real" category="clm_physics"
        group="soilwater_movement_inparm" valid_values="" >
 minimum time step length (seconds) for adaptive time stepping in richards equation
