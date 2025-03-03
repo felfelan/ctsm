@@ -210,9 +210,20 @@ contains
               soilhydrology_inst, waterstate_inst)
       end if
 
-      if (use_aquifer_layer()) then 
+      if (use_aquifer_layer()) then
+
+         !call PerchedWaterTable(bounds, num_hydrologyc, filter_hydrologyc, &
+         !     num_urbanc, filter_urbanc, soilhydrology_inst, soilstate_inst, &
+         !     temperature_inst, waterstate_inst, waterflux_inst) 
+
          call WaterTable(bounds, num_hydrologyc, filter_hydrologyc, num_urbanc, filter_urbanc, &
-              soilhydrology_inst, soilstate_inst, temperature_inst, waterstate_inst, waterflux_inst, irrigation_inst) 
+              soilhydrology_inst, soilstate_inst, temperature_inst, waterstate_inst, waterflux_inst, irrigation_inst)
+
+         !call RenewCondensation(bounds, num_hydrologyc, filter_hydrologyc, &
+         !     num_urbanc, filter_urbanc,&
+         !     soilhydrology_inst, soilstate_inst, &
+         !     waterstate_inst, waterflux_inst)
+
       else
 
          call PerchedWaterTable(bounds, num_hydrologyc, filter_hydrologyc, &
