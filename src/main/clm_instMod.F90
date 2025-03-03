@@ -302,7 +302,7 @@ contains
     call photosyns_inst%Init(bounds)
 
     call soilhydrology_inst%Init(bounds, nlfilename)
-    call SoilHydrologyInitTimeConst(bounds, soilhydrology_inst) ! sets time constant properties
+    call SoilHydrologyInitTimeConst(bounds, soilhydrology_inst, soilstate_inst) ! sets time constant properties
 
     call solarabs_inst%Init(bounds)
 
