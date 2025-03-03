@@ -4,7 +4,7 @@ module clm_initializeMod
   ! Performs land model initialization
   !
   use shr_kind_mod    , only : r8 => shr_kind_r8
-  use shr_sys_mod     , only : shr_sys_flush
+  use shr_sys_mod     , only : shr_sys_flush, shr_sys_abort
   use shr_log_mod     , only : errMsg => shr_log_errMsg
   use spmdMod         , only : masterproc
   use decompMod       , only : bounds_type, get_proc_bounds, get_proc_clumps, get_clump_bounds, get_proc_global
@@ -16,7 +16,7 @@ module clm_initializeMod
   use clm_instur      , only : wt_lunit, urban_valid, wt_nat_patch, wt_cft, fert_cft, wt_glc_mec, topo_glc_mec
   use perf_mod        , only : t_startf, t_stopf
   use readParamsMod   , only : readParameters
-  use ncdio_pio       , only : file_desc_t
+  use ncdio_pio       , only : file_desc_t, ncd_pio_openfile
   use GridcellType    , only : grc           ! instance     
   use LandunitType    , only : lun           ! instance          
   use ColumnType      , only : col           ! instance          
@@ -32,6 +32,13 @@ module clm_initializeMod
   !
   public :: initialize1  ! Phase one initialization
   public :: initialize2  ! Phase two initialization
+
+
+    character(len=*), parameter, private :: sourcefile = &
+       __FILE__
+
+  !
+
   !-----------------------------------------------------------------------
 
 contains
@@ -44,7 +51,7 @@ contains
     !
     ! !USES:
     use clm_varpar       , only: clm_varpar_init, natpft_lb, natpft_ub, cft_lb, cft_ub, maxpatch_glcmec
-    use clm_varcon       , only: clm_varcon_init
+    use clm_varcon       , only: clm_varcon_init, grlnd
     use landunit_varcon  , only: landunit_varcon_init, max_lunit
     use clm_varctl       , only: fsurdat, fatmlndfrc, noland, version  
     use pftconMod        , only: pftcon       
@@ -57,9 +64,11 @@ contains
     use ch4varcon        , only: ch4conrd
     use UrbanParamsType  , only: UrbanInput, IsSimpleBuildTemp
     use dynSubgridControlMod, only: dynSubgridControl_init
-
+    use fileutils         , only : getfil
     use spmdMod          , only : MPI_REAL8, MPI_SUM, mpicom
     use decompMod        , only : ldecomp
+    use ncdio_pio , only : ncd_io
+
     !
     ! !LOCAL VARIABLES:
     integer           :: ier                     ! error status
@@ -73,11 +82,21 @@ contains
     integer           :: nc                      ! clump index
     integer ,pointer  :: amask(:)                ! global land mask
     character(len=32) :: subname = 'initialize1' ! subroutine name
+
+
+    type(file_desc_t)     :: ncid              ! netcdf id
+    logical               :: readvar 
+    integer               :: dimid             ! dimension id
+    character(len=256)    :: locfn             ! local filename
+    real(r8) ,pointer     :: std (:)           ! read in - topo_std
+    real(r8) ,pointer     :: tslope2 (:)	
+	real(r8)              :: aa, nghbrcount
 	
     integer :: ngrc, nlan, ncol, npat, nCohorts  ! total number of grid cells,landunits,columns,patches
     integer :: gdc, g_in, g_out
     real(r8), pointer :: G_lat_long(:)              ! latitude array for all grid cells
     real(r8), pointer :: G_lon_long(:)              ! longitude array for all grid cells
+    real(r8), pointer :: stdelev_long(:) , stdelev_glob(:)
 
     integer , pointer :: G_top_long(:)
     integer , pointer :: G_bot_long(:)
@@ -251,13 +270,18 @@ contains
 
     allocate(G_lat_long(ngrc))
     allocate(G_lon_long(ngrc))
+    allocate(stdelev_long(ngrc))
+    allocate(stdelev_glob(ngrc))
     ! allocate(G_top_long(ngrc))
     ! allocate(G_bot_long(ngrc))
     ! allocate(G_lft_long(ngrc))
     ! allocate(G_rgt_long(ngrc))
 
-    G_lat_long(:)  = 0._r8
-    G_lon_long(:)  = 0._r8	
+    G_lat_long(:)   = 0._r8
+    G_lon_long(:)   = 0._r8
+    stdelev_long(:) = 0._r8
+
+    stdelev_glob(:) = 1.e36_r8
 
     ! G_top_long(:)  = 0	
     ! G_bot_long(:)  = 0
@@ -277,6 +301,16 @@ contains
     allocate(ldecomp%gtoprgt(ngrc), stat=ier)
     allocate(ldecomp%gbotlft(ngrc), stat=ier)
     allocate(ldecomp%gbotrgt(ngrc), stat=ier)
+
+    allocate(ldecomp%gtopUP(ngrc), stat=ier)
+    allocate(ldecomp%gbotUP(ngrc), stat=ier)
+    allocate(ldecomp%glftUP(ngrc), stat=ier)
+    allocate(ldecomp%grgtUP(ngrc), stat=ier)
+
+    allocate(ldecomp%gtoplftUP(ngrc), stat=ier)
+    allocate(ldecomp%gtoprgtUP(ngrc), stat=ier)
+    allocate(ldecomp%gbotlftUP(ngrc), stat=ier)
+    allocate(ldecomp%gbotrgtUP(ngrc), stat=ier)
 	
     allocate(ldecomp%gneighbors(ngrc), stat=ier)
 	
@@ -294,6 +328,57 @@ contains
     ldecomp%gtoprgt(:) = 0
     ldecomp%gbotlft(:) = 0
     ldecomp%gbotrgt(:) = 0
+
+
+    ! Open surface dataset to read in data below 
+
+    call getfil (fsurdat, locfn, 0)
+    call ncd_pio_openfile (ncid, locfn, 0)
+
+
+    allocate(std(bounds_proc%begg:bounds_proc%endg))
+    allocate(tslope2(bounds_proc%begg:bounds_proc%endg))
+
+    call ncd_io(ncid=ncid, varname='STD_ELEV', flag='read', data=std, dim1name=grlnd, readvar=readvar)
+    if (.not. readvar) then
+       call shr_sys_abort(' ERROR: TOPOGRAPHIC STDdev (STD_ELEV) NOT on surfdata file'//&
+            errMsg(sourcefile, __LINE__)) 
+    end if
+    ! do c = bounds_proc%begc,bounds_proc%endc
+       ! g = col%gridcell(c)
+       !! Topographic variables
+       ! aa = std(g)
+    ! end do
+
+
+    do g = bounds_proc%begg,bounds_proc%endg
+       grc%stdelev(g) = std(g)
+    end do
+
+    call ncd_io(ncid=ncid, varname='SLOPE', flag='read', data=tslope2, dim1name=grlnd, readvar=readvar)
+    if (.not. readvar) then
+       call shr_sys_abort(' ERROR: TOPOGRAPHIC SLOPE NOT on surfdata file'//&
+            errMsg(sourcefile, __LINE__)) 
+    end if
+
+    !  Determine gridcell SLOPE
+    do g = bounds_proc%begg,bounds_proc%endg
+       ! grc%slopelev(g) = max(tslope2(g), 0.2_r8)
+       grc%slopelev(g) = tslope2(g)
+    end do
+
+    deallocate(tslope2)
+    deallocate(std)
+
+    ldecomp%gtopUP(:) = 0._r8
+    ldecomp%gbotUP(:) = 0._r8
+    ldecomp%glftUP(:) = 0._r8
+    ldecomp%grgtUP(:) = 0._r8
+
+    ldecomp%gtoplftUP(:) = 0._r8
+    ldecomp%gtoprgtUP(:) = 0._r8
+    ldecomp%gbotlftUP(:) = 0._r8
+    ldecomp%gbotrgtUP(:) = 0._r8
 	
     if (masterproc) then
        	write(*,*)'FFelfelani: passing the lat/lon information among processors'
@@ -305,6 +390,8 @@ contains
        do gdc = bounds_clump%begg,bounds_clump%endg
           G_lat_long(gdc) = grc%latdeg(gdc) 
           G_lon_long(gdc) = grc%londeg(gdc)
+          ! stdelev_long(gdc) = grc%stdelev(gdc)
+          stdelev_long(gdc) = grc%slopelev(gdc) ! instead of std, I use slope to set the uphill downhill cells
        end do
     end do	 	
     call mpi_allreduce(G_lat_long, ldecomp%glat, ngrc, &
@@ -313,66 +400,145 @@ contains
     call mpi_allreduce(G_lon_long, ldecomp%glon, ngrc, &
                          MPI_REAL8, MPI_SUM, mpicom, ier) 
 
+    call mpi_allreduce(stdelev_long, stdelev_glob, ngrc, &
+                         MPI_REAL8, MPI_SUM, mpicom, ier) 
+
     call mpi_barrier(mpicom,ier)
  
     do  g_out = 1, ngrc
+       nghbrcount = 0._r8
        do g_in = 1, ngrc
           ! identify neighbors with the ixy, jxy indices of grid cells
           if (ldecomp%ixy(g_out) == ldecomp%ixy(g_in)          .and.  &
               ldecomp%jxy(g_out) == ldecomp%jxy(g_in) - 1) then
 					
-              ldecomp%gneighbors(g_out) = ldecomp%gneighbors(g_out) + 1
+              ! ldecomp%gneighbors(g_out) = ldecomp%gneighbors(g_out) + 1._r8
+              nghbrcount = nghbrcount + 1._r8
               ldecomp%gtop(g_out)      = g_in
+			  ! sign func = diff/abs(diff): 1 means diff is >0 (neighbor uphill, center downhill, center receives water); -1 means diff <0
+			  if (stdelev_glob(g_in) .ne. stdelev_glob(g_out)) ldecomp%gtopUP(g_out) = (stdelev_glob(g_in) - stdelev_glob(g_out)) / abs(stdelev_glob(g_in) - stdelev_glob(g_out))
 
           else if (ldecomp%ixy(g_out) == ldecomp%ixy(g_in) + 1 .and.  &
                    ldecomp%jxy(g_out) == ldecomp%jxy(g_in) - 1) then
 					
-              ldecomp%gneighbors(g_out) = ldecomp%gneighbors(g_out) + 1
-              ldecomp%gtoplft(g_out)      = g_in
+              ! ldecomp%gneighbors(g_out) = ldecomp%gneighbors(g_out) + 1._r8
+              nghbrcount = nghbrcount + 1._r8
+              ldecomp%gtoplft(g_out)    = g_in
+			  if (stdelev_glob(g_in) .ne. stdelev_glob(g_out)) ldecomp%gtoplftUP(g_out)  = (stdelev_glob(g_in) - stdelev_glob(g_out)) / abs(stdelev_glob(g_in) - stdelev_glob(g_out))
 
           else if (ldecomp%ixy(g_out) == ldecomp%ixy(g_in) - 1 .and.  &
                    ldecomp%jxy(g_out) == ldecomp%jxy(g_in) - 1) then
 					
-              ldecomp%gneighbors(g_out) = ldecomp%gneighbors(g_out) + 1
-              ldecomp%gtoprgt(g_out)      = g_in
+              ! ldecomp%gneighbors(g_out) = ldecomp%gneighbors(g_out) + 1._r8
+              nghbrcount = nghbrcount + 1._r8
+              ldecomp%gtoprgt(g_out)    = g_in
+			  if (stdelev_glob(g_in) .ne. stdelev_glob(g_out)) ldecomp%gtoprgtUP(g_out)  = (stdelev_glob(g_in) - stdelev_glob(g_out)) / abs(stdelev_glob(g_in) - stdelev_glob(g_out))
 			  
           else if (ldecomp%ixy(g_out) == ldecomp%ixy(g_in)     .and.  &
                    ldecomp%jxy(g_out) == ldecomp%jxy(g_in) + 1) then
 					
-              ldecomp%gneighbors(g_out) = ldecomp%gneighbors(g_out) + 1
-              ldecomp%gbot(g_out)      = g_in
+              ! ldecomp%gneighbors(g_out) = ldecomp%gneighbors(g_out) + 1._r8
+              nghbrcount = nghbrcount + 1._r8
+              ldecomp%gbot(g_out)       = g_in
+			  if (stdelev_glob(g_in) .ne. stdelev_glob(g_out)) ldecomp%gbotUP(g_out)     = (stdelev_glob(g_in) - stdelev_glob(g_out)) / abs(stdelev_glob(g_in) - stdelev_glob(g_out))
 
           else if (ldecomp%ixy(g_out) == ldecomp%ixy(g_in) + 1 .and.  &
                    ldecomp%jxy(g_out) == ldecomp%jxy(g_in) + 1) then
 					
-              ldecomp%gneighbors(g_out) = ldecomp%gneighbors(g_out) + 1
-              ldecomp%gbotlft(g_out)      = g_in
+              ! ldecomp%gneighbors(g_out) = ldecomp%gneighbors(g_out) + 1._r8
+              nghbrcount = nghbrcount + 1._r8
+              ldecomp%gbotlft(g_out)    = g_in
+			  if (stdelev_glob(g_in) .ne. stdelev_glob(g_out)) ldecomp%gbotlftUP(g_out)  = (stdelev_glob(g_in) - stdelev_glob(g_out)) / abs(stdelev_glob(g_in) - stdelev_glob(g_out))
 
           else if (ldecomp%ixy(g_out) == ldecomp%ixy(g_in) - 1 .and.  &
                    ldecomp%jxy(g_out) == ldecomp%jxy(g_in) + 1) then
 					
-              ldecomp%gneighbors(g_out) = ldecomp%gneighbors(g_out) + 1
-              ldecomp%gbotrgt(g_out)      = g_in
+              ! ldecomp%gneighbors(g_out) = ldecomp%gneighbors(g_out) + 1._r8
+              nghbrcount = nghbrcount + 1._r8
+              ldecomp%gbotrgt(g_out)    = g_in
+			  if (stdelev_glob(g_in) .ne. stdelev_glob(g_out)) ldecomp%gbotrgtUP(g_out)  = (stdelev_glob(g_in) - stdelev_glob(g_out)) / abs(stdelev_glob(g_in) - stdelev_glob(g_out))
 			  
           else if (ldecomp%ixy(g_out) == ldecomp%ixy(g_in) + 1 .and.  &
                    ldecomp%jxy(g_out) == ldecomp%jxy(g_in)) then
 
-              ldecomp%gneighbors(g_out) = ldecomp%gneighbors(g_out) + 1
-              ldecomp%glft(g_out)      = g_in
+              ! ldecomp%gneighbors(g_out) = ldecomp%gneighbors(g_out) + 1._r8
+              nghbrcount = nghbrcount + 1._r8
+              ldecomp%glft(g_out)       = g_in
+			  if (stdelev_glob(g_in) .ne. stdelev_glob(g_out)) ldecomp%glftUP(g_out)     = (stdelev_glob(g_in) - stdelev_glob(g_out)) / abs(stdelev_glob(g_in) - stdelev_glob(g_out))
 
           else if (ldecomp%ixy(g_out) == ldecomp%ixy(g_in) - 1 .and.  &
                    ldecomp%jxy(g_out) == ldecomp%jxy(g_in)) then
 					
-              ldecomp%gneighbors(g_out) = ldecomp%gneighbors(g_out) + 1
-              ldecomp%grgt(g_out)      = g_in
-					
+              ! ldecomp%gneighbors(g_out) = ldecomp%gneighbors(g_out) + 1._r8
+              nghbrcount = nghbrcount + 1._r8
+              ldecomp%grgt(g_out)       = g_in
+			  if (stdelev_glob(g_in) .ne. stdelev_glob(g_out)) ldecomp%grgtUP(g_out)     = (stdelev_glob(g_in) - stdelev_glob(g_out)) / abs(stdelev_glob(g_in) - stdelev_glob(g_out))
+			  
           end if  ! find surrounding neighbors
        end do  ! g_in loop
+       ldecomp%gneighbors(g_out) = nghbrcount
     end do
- 
+
+
+    do gdc = bounds_clump%begg,bounds_clump%endg
+       grc%NoNeighbors(gdc) = ldecomp%gneighbors(gdc)
+    enddo
+
+    ! if (masterproc) then
+    ! do  g_out = 1, ngrc
+       ! do g_in = 1, ngrc
+          ! if (ldecomp%ixy(g_out) == ldecomp%ixy(g_in)          .and.  &
+              ! ldecomp%jxy(g_out) == ldecomp%jxy(g_in) - 1) then
+					
+              ! ldecomp%gneighbors(g_out) = ldecomp%gneighbors(g_out) + 1._r8
+
+          ! else if (ldecomp%ixy(g_out) == ldecomp%ixy(g_in) + 1 .and.  &
+                   ! ldecomp%jxy(g_out) == ldecomp%jxy(g_in) - 1) then
+					
+              ! ldecomp%gneighbors(g_out) = ldecomp%gneighbors(g_out) + 1._r8
+
+          ! else if (ldecomp%ixy(g_out) == ldecomp%ixy(g_in) - 1 .and.  &
+                   ! ldecomp%jxy(g_out) == ldecomp%jxy(g_in) - 1) then
+					
+              ! ldecomp%gneighbors(g_out) = ldecomp%gneighbors(g_out) + 1._r8
+			  
+          ! else if (ldecomp%ixy(g_out) == ldecomp%ixy(g_in)     .and.  &
+                   ! ldecomp%jxy(g_out) == ldecomp%jxy(g_in) + 1) then
+					
+              ! ldecomp%gneighbors(g_out) = ldecomp%gneighbors(g_out) + 1._r8
+
+          ! else if (ldecomp%ixy(g_out) == ldecomp%ixy(g_in) + 1 .and.  &
+                   ! ldecomp%jxy(g_out) == ldecomp%jxy(g_in) + 1) then
+					
+              ! ldecomp%gneighbors(g_out) = ldecomp%gneighbors(g_out) + 1._r8
+
+          ! else if (ldecomp%ixy(g_out) == ldecomp%ixy(g_in) - 1 .and.  &
+                   ! ldecomp%jxy(g_out) == ldecomp%jxy(g_in) + 1) then
+					
+              ! ldecomp%gneighbors(g_out) = ldecomp%gneighbors(g_out) + 1._r8
+			  
+          ! else if (ldecomp%ixy(g_out) == ldecomp%ixy(g_in) + 1 .and.  &
+                   ! ldecomp%jxy(g_out) == ldecomp%jxy(g_in)) then
+
+              ! ldecomp%gneighbors(g_out) = ldecomp%gneighbors(g_out) + 1._r8
+
+          ! else if (ldecomp%ixy(g_out) == ldecomp%ixy(g_in) - 1 .and.  &
+                   ! ldecomp%jxy(g_out) == ldecomp%jxy(g_in)) then
+					
+              ! ldecomp%gneighbors(g_out) = ldecomp%gneighbors(g_out) + 1._r8
+			  
+          ! end if  ! find surrounding neighbors
+       ! end do  ! g_in loop
+    ! end do
+    ! end if
+
+    ! call mpi_barrier(mpicom,ier)
+
     deallocate(G_lat_long)
     deallocate(G_lon_long)
-	   
+    deallocate(stdelev_long)
+    deallocate(stdelev_glob)
+
     ! deallocate(G_top_long)
     ! deallocate(G_bot_long)
     ! deallocate(G_lft_long)
