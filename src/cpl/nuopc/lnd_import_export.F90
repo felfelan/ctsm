@@ -131,6 +131,10 @@ module lnd_import_export
   character(*), parameter :: Sl_ram1        = 'Sl_ram1'
   character(*), parameter :: Sl_fv          = 'Sl_fv'
   character(*), parameter :: Sl_soilw       = 'Sl_soilw'
+  
+  ! for CTSM-WRFHydro 
+  character(*), parameter :: Sl_soilliq       = 'Sl_soilliq'
+
   character(*), parameter :: Fall_fco2_lnd  = 'Fall_fco2_lnd'
   character(*), parameter :: Sl_ddvel       = 'Sl_ddvel'
   character(*), parameter :: Fall_voc       = 'Fall_voc'
@@ -139,6 +143,13 @@ module lnd_import_export
   character(*), parameter :: Flrl_rofsur    = 'Flrl_rofsur'
   character(*), parameter :: Flrl_rofsub    = 'Flrl_rofsub'
   character(*), parameter :: Flrl_rofgwl    = 'Flrl_rofgwl'
+
+  ! for CTSM-WRFHydro
+  character(*), parameter :: Flrl_rofh2osfc_sur       = 'Flrl_rofh2osfc_sur'
+  character(*), parameter :: Flrl_rofsat_excess_sur   = 'Flrl_rofsat_excess_sur'
+  character(*), parameter :: Flrl_rofinfl_excess_sur  = 'Flrl_rofinfl_excess_sur'
+  character(*), parameter :: Flrl_rofh2osfc_thresh    = 'Flrl_rofh2osfc_thresh'
+
   character(*), parameter :: Flrl_rofi      = 'Flrl_rofi'
   character(*), parameter :: Flrl_irrig     = 'Flrl_irrig'
   character(*), parameter :: Sl_tsrf_elev   = 'Sl_tsrf_elev'
@@ -306,6 +317,15 @@ contains
        call fldlist_add(fldsFrLnd_num, fldsFrlnd, Flrl_rofsub)
        call fldlist_add(fldsFrLnd_num, fldsFrlnd, Flrl_rofi  )
        call fldlist_add(fldsFrLnd_num, fldsFrlnd, Flrl_irrig )
+
+       call fldlist_add(fldsFrLnd_num, fldsFrlnd, Sl_soilw)
+	   call fldlist_add(fldsFrLnd_num, fldsFrlnd, Sl_soilliq)
+
+       call fldlist_add(fldsFrLnd_num, fldsFrlnd, Flrl_rofh2osfc_sur)
+       call fldlist_add(fldsFrLnd_num, fldsFrlnd, Flrl_rofsat_excess_sur)
+       call fldlist_add(fldsFrLnd_num, fldsFrlnd, Flrl_rofinfl_excess_sur)
+       call fldlist_add(fldsFrLnd_num, fldsFrlnd, Flrl_rofh2osfc_thresh)
+
     end if
 
     ! export to glc if appropriate
@@ -860,6 +880,14 @@ contains
                init_spval=.true., rc=rc)
           if (ChkErr(rc,__LINE__,u_FILE_u)) return
        end if
+
+       if (fldchk(exportState, Sl_soilliq)) then
+          call state_setexport_1d(exportState, Sl_soilliq, waterlnd2atmbulk_inst%h2osoi_liq_grc(begg:,1), &
+               init_spval=.true., rc=rc)
+          if (ChkErr(rc,__LINE__,u_FILE_u)) return
+       end if
+
+
        if (fldchk(exportState, Fall_fco2_lnd)) then
           call state_setexport_1d(exportState, Fall_fco2_lnd, lnd2atm_inst%net_carbon_exchange_grc(begg:), &
                init_spval=.false., minus=.true., rc=rc)
@@ -906,6 +934,30 @@ contains
             init_spval=.true., rc=rc)
        if (ChkErr(rc,__LINE__,u_FILE_u)) return
     end if
+
+
+    if (fldchk(exportState, Flrl_rofh2osfc_sur)) then ! qgwl sent individually to mediator
+       call state_setexport_1d(exportState, Flrl_rofh2osfc_sur, waterlnd2atmbulk_inst%qflx_rofliq_h2osfc_surf_grc(begg:), &
+            init_spval=.true., rc=rc)
+       if (ChkErr(rc,__LINE__,u_FILE_u)) return
+    end if
+    if (fldchk(exportState, Flrl_rofsat_excess_sur)) then ! qgwl sent individually to mediator
+       call state_setexport_1d(exportState, Flrl_rofsat_excess_sur, waterlnd2atmbulk_inst%qflx_rofliq_sat_excess_surf_grc(begg:), &
+            init_spval=.true., rc=rc)
+       if (ChkErr(rc,__LINE__,u_FILE_u)) return
+    end if
+    if (fldchk(exportState, Flrl_rofinfl_excess_sur)) then ! qgwl sent individually to mediator
+       call state_setexport_1d(exportState, Flrl_rofinfl_excess_sur, waterlnd2atmbulk_inst%qflx_rofliq_infl_excess_surf_grc(begg:), &
+            init_spval=.true., rc=rc)
+       if (ChkErr(rc,__LINE__,u_FILE_u)) return
+    end if
+    if (fldchk(exportState, Flrl_rofh2osfc_thresh)) then ! qgwl sent individually to mediator
+       call state_setexport_1d(exportState, Flrl_rofh2osfc_thresh, waterlnd2atmbulk_inst%qflx_rofliq_h2osfc_thresh_grc(begg:), &
+            init_spval=.true., rc=rc)
+       if (ChkErr(rc,__LINE__,u_FILE_u)) return
+    end if
+
+
     if (fldchk(exportState, Flrl_rofi)) then ! ice set individually to mediator
        call state_setexport_1d(exportState, Flrl_rofi, waterlnd2atmbulk_inst%qflx_rofice_grc(begg:), &
             init_spval=.true., rc=rc)
