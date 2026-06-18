@@ -244,6 +244,22 @@ contains
          avgflag='A', &
          long_name=this%info%lname('Annual ET'), &
          ptr_col=this%AnnET, c2l_scale_type='urbanf', default='inactive')
+
+    this%qflx_sat_excess_surf_col(begc:endc) = spval
+    call hist_addfld1d ( &
+         fname=this%info%fname('QSAT_EXCESS'),  &
+         units='mm/s',  &
+         avgflag='A', &
+         long_name=this%info%lname('Surface runoff due to saturated surface'), &
+         ptr_col=this%qflx_sat_excess_surf_col, c2l_scale_type='urbanf')
+
+    this%qflx_infl_excess_surf_col(begc:endc) = spval
+    call hist_addfld1d ( &
+         fname=this%info%fname('QINFL_EXCESS'),  &
+         units='mm/s',  &
+         avgflag='A', &
+         long_name=this%info%lname('Surface runoff due to surface infiltration excess'), &
+         ptr_col=this%qflx_infl_excess_surf_col, c2l_scale_type='urbanf')
          
   end subroutine InitBulkHistory
   
