@@ -115,3 +115,23 @@ core.*
 *.log !run.log
 *.pyc
 Depends
+
+# ------------------------------------------------------------
+# Local development and backup files
+# ------------------------------------------------------------
+*.FFbak.*
+
+# Local backup directories
+/tools/contrib_bakup/
+
+# Local machine-specific helper script
+/tools/mksurfdata_map_fixed2005/FelfelaniBatch.casper.new.sh
+
+# Temporary mksurfdata files
+/tools/mksurfdata_map_fixed2005/GLakes_20201009_3minHarvest/.mksrf_*.nc.*
+
+# HPC job output files
+/tools/mksurfdata_map_fixed2005/GLakes_20201009_3minHarvest/mpi_job.o*
+
+# Local spin-up diagnostic scripts not included in release
+/tools/contrib/SpinupStability*.ncl
