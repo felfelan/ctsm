@@ -41,6 +41,9 @@ module lnd_import_export
   private :: state_getfldptr
   private :: fldchk
   private :: ReadCapNamelist        ! Read in namelists governing import and export state
+  private :: export_soil_temperature
+  private :: export_total_soil_moisture
+  private :: export_liquid_soil_moisture
 
   type fld_list_type
      character(len=128) :: stdname
@@ -69,6 +72,7 @@ module lnd_import_export
   logical                :: force_send_to_atm   ! Force sending export data to atmosphere even if ATM is not prognostic
   integer                :: glc_nec          ! number of glc elevation classes
   integer, parameter     :: debug = 0        ! internal debug level
+  integer, parameter     :: wrfhydro_nsoil = 4
 
   ! import fields
   character(*), parameter :: Sa_z                = 'Sa_z'
@@ -134,6 +138,9 @@ module lnd_import_export
   
   ! for CTSM-WRFHydro 
   character(*), parameter :: Sl_soilliq       = 'Sl_soilliq'
+  character(*), parameter :: inst_soil_temperature = 'inst_soil_temperature'
+  character(*), parameter :: inst_total_soil_moisture_content = 'inst_total_soil_moisture_content'
+  character(*), parameter :: inst_soil_moisture_content = 'inst_soil_moisture_content'
 
   character(*), parameter :: Fall_fco2_lnd  = 'Fall_fco2_lnd'
   character(*), parameter :: Sl_ddvel       = 'Sl_ddvel'
@@ -319,7 +326,13 @@ contains
        call fldlist_add(fldsFrLnd_num, fldsFrlnd, Flrl_irrig )
 
        call fldlist_add(fldsFrLnd_num, fldsFrlnd, Sl_soilw)
-	   call fldlist_add(fldsFrLnd_num, fldsFrlnd, Sl_soilliq)
+       call fldlist_add(fldsFrLnd_num, fldsFrlnd, Sl_soilliq)
+       call fldlist_add(fldsFrLnd_num, fldsFrlnd, inst_soil_temperature, &
+            ungridded_lbound=1, ungridded_ubound=wrfhydro_nsoil)
+       call fldlist_add(fldsFrLnd_num, fldsFrlnd, inst_total_soil_moisture_content, &
+            ungridded_lbound=1, ungridded_ubound=wrfhydro_nsoil)
+       call fldlist_add(fldsFrLnd_num, fldsFrlnd, inst_soil_moisture_content, &
+            ungridded_lbound=1, ungridded_ubound=wrfhydro_nsoil)
 
        call fldlist_add(fldsFrLnd_num, fldsFrlnd, Flrl_rofh2osfc_sur)
        call fldlist_add(fldsFrLnd_num, fldsFrlnd, Flrl_rofsat_excess_sur)
@@ -767,6 +780,7 @@ contains
     !-------------------------------
 
     use Waterlnd2atmBulkType , only: waterlnd2atmbulk_type
+    use clm_varcon           , only: spval
 
     ! input/output variables
     type(ESMF_GridComp)                         :: gcomp
@@ -918,6 +932,13 @@ contains
     ! -----------------------
     ! output to river
     ! -----------------------
+    call export_soil_temperature(exportState, bounds, rc)
+    if (ChkErr(rc,__LINE__,u_FILE_u)) return
+    call export_total_soil_moisture(exportState, bounds, waterlnd2atmbulk_inst, rc)
+    if (ChkErr(rc,__LINE__,u_FILE_u)) return
+    call export_liquid_soil_moisture(exportState, bounds, rc)
+    if (ChkErr(rc,__LINE__,u_FILE_u)) return
+
     ! surface runoff is the sum of qflx_over, qflx_h2osfc_surf
     ! do g = begg,endg
     !   data1d(g) = waterlnd2atmbulk_inst%qflx_rofliq_qsur_grc(g) + &
@@ -946,9 +967,13 @@ contains
             init_spval=.true., rc=rc)
        if (ChkErr(rc,__LINE__,u_FILE_u)) return
     end if
-    if (fldchk(exportState, Flrl_rofinfl_excess_sur)) then ! qgwl sent individually to mediator
-       call state_setexport_1d(exportState, Flrl_rofinfl_excess_sur, waterlnd2atmbulk_inst%qflx_rofliq_infl_excess_surf_grc(begg:), &
-            init_spval=.true., rc=rc)
+    if (fldchk(exportState, Flrl_rofinfl_excess_sur)) then
+       data1d(begg:) = waterlnd2atmbulk_inst%qflx_rofliq_infl_excess_surf_grc(begg:)
+       where (data1d(begg:) == spval)
+          data1d(begg:) = 0._r8
+       end where
+       call state_setexport_1d(exportState, Flrl_rofinfl_excess_sur, data1d(begg:), &
+            init_spval=.false., rc=rc)
        if (ChkErr(rc,__LINE__,u_FILE_u)) return
     end if
     if (fldchk(exportState, Flrl_rofh2osfc_thresh)) then ! qgwl sent individually to mediator
@@ -1005,6 +1030,104 @@ contains
     end if
 
   end subroutine export_fields
+
+  !===============================================================================
+  subroutine export_soil_temperature(exportState, bounds, rc)
+
+    use clm_instMod   , only : temperature_inst
+    use subgridAveMod, only : c2g
+
+    type(ESMF_State), intent(in)  :: exportState
+    type(bounds_type), intent(in) :: bounds
+    integer, intent(out)          :: rc
+
+    real(r8) :: soil_temperature_grc(bounds%begg:bounds%endg, 1:wrfhydro_nsoil)
+
+    rc = ESMF_SUCCESS
+
+    if (.not. fldchk(exportState, inst_soil_temperature)) return
+
+    ! The CTSM 4SL_2m configuration uses the same four soil-layer
+    ! boundaries as WRF-Hydro: 0.10, 0.40, 1.00, and 2.00 m.
+    call c2g(bounds, wrfhydro_nsoil, &
+         temperature_inst%t_soisno_col(bounds%begc:bounds%endc, 1:wrfhydro_nsoil), &
+         soil_temperature_grc(bounds%begg:bounds%endg, 1:wrfhydro_nsoil), &
+         c2l_scale_type='urbanf', l2g_scale_type='unity')
+
+    call state_setexport_2d(exportState, inst_soil_temperature, &
+         soil_temperature_grc, init_spval=.true., rc=rc)
+    if (ChkErr(rc,__LINE__,u_FILE_u)) return
+
+  end subroutine export_soil_temperature
+
+  !===============================================================================
+  subroutine export_total_soil_moisture(exportState, bounds, waterlnd2atmbulk_inst, rc)
+
+    use Waterlnd2atmBulkType, only : waterlnd2atmbulk_type
+
+    type(ESMF_State), intent(in)                 :: exportState
+    type(bounds_type), intent(in)                :: bounds
+    type(waterlnd2atmbulk_type), intent(inout)   :: waterlnd2atmbulk_inst
+    integer, intent(out)                         :: rc
+
+    rc = ESMF_SUCCESS
+
+    if (.not. fldchk(exportState, inst_total_soil_moisture_content)) return
+
+    ! The CTSM 4SL_2m configuration uses the same four soil-layer
+    ! boundaries as WRF-Hydro: 0.10, 0.40, 1.00, and 2.00 m.
+    call state_setexport_2d(exportState, inst_total_soil_moisture_content, &
+         waterlnd2atmbulk_inst%h2osoi_vol_grc(bounds%begg:bounds%endg, 1:wrfhydro_nsoil), &
+         init_spval=.true., rc=rc)
+    if (ChkErr(rc,__LINE__,u_FILE_u)) return
+
+  end subroutine export_total_soil_moisture
+
+  !===============================================================================
+  subroutine export_liquid_soil_moisture(exportState, bounds, rc)
+
+    use clm_instMod   , only : water_inst
+    use clm_varcon    , only : denh2o, spval
+    use ColumnType    , only : col
+    use subgridAveMod , only : c2g
+
+    type(ESMF_State), intent(in)  :: exportState
+    type(bounds_type), intent(in) :: bounds
+    integer, intent(out)          :: rc
+
+    integer  :: c
+    integer  :: j
+    real(r8) :: liquid_soil_moisture_col(bounds%begc:bounds%endc, 1:wrfhydro_nsoil)
+    real(r8) :: liquid_soil_moisture_grc(bounds%begg:bounds%endg, 1:wrfhydro_nsoil)
+
+    rc = ESMF_SUCCESS
+
+    if (.not. fldchk(exportState, inst_soil_moisture_content)) return
+
+    ! The CTSM 4SL_2m configuration uses the same four soil-layer
+    ! boundaries as WRF-Hydro: 0.10, 0.40, 1.00, and 2.00 m.
+    liquid_soil_moisture_col = spval
+    do j = 1, wrfhydro_nsoil
+       do c = bounds%begc, bounds%endc
+          if (water_inst%waterstatebulk_inst%h2osoi_liq_col(c,j) /= spval .and. &
+               col%dz(c,j) /= spval .and. col%dz(c,j) > 0._r8) then
+             ! [kg m-2] / ([kg m-3] * [m]) = [m3 m-3]
+             liquid_soil_moisture_col(c,j) = &
+                  water_inst%waterstatebulk_inst%h2osoi_liq_col(c,j) / (denh2o * col%dz(c,j))
+          end if
+       end do
+    end do
+
+    call c2g(bounds, wrfhydro_nsoil, &
+         liquid_soil_moisture_col(bounds%begc:bounds%endc, 1:wrfhydro_nsoil), &
+         liquid_soil_moisture_grc(bounds%begg:bounds%endg, 1:wrfhydro_nsoil), &
+         c2l_scale_type='urbanf', l2g_scale_type='unity')
+
+    call state_setexport_2d(exportState, inst_soil_moisture_content, &
+         liquid_soil_moisture_grc, init_spval=.true., rc=rc)
+    if (ChkErr(rc,__LINE__,u_FILE_u)) return
+
+  end subroutine export_liquid_soil_moisture
 
   !===============================================================================
   subroutine fldlist_add(num, fldlist, stdname, ungridded_lbound, ungridded_ubound)

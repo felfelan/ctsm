@@ -69,7 +69,7 @@ fxDONOTUSEurl = https://github.com/ESCOMP/mizuRoute
 path = components/wrfhydro
 url = https://github.com/scrasmussen/wrf_hydro_nwm_public
 # commits from branch wrf-hydro-cesm
-fxtag = 8eff417b25400d40b072266a40fdcd679e585de6
+fxtag = a080604a1f413a0204812ed0b3a479a0c35e9674
 fxrequired = AlwaysRequired
 # Standard Fork to compare to with "git fleximod test" to ensure personal forks aren't committed
 fxDONOTUSEurl = https://github.com/NCAR/wrf_hydro_nwm_public
@@ -98,9 +98,9 @@ fxDONOTUSEurl = https://github.com/ESMCI/cime
 path = components/cmeps
 # url = https://github.com/ESCOMP/CMEPS.git
 # fxtag = cmeps1.1.37
-url = git@github.com:felfelan/CMEPS.git
-# commit from branch cmeps_ff
-fxtag = 594beffdcd989a509768d1198ba03d9c981404f8
+url = git@github.com:scrasmussen/CMEPS.git
+# commit from branch cmeps-wrfhydro from cmeps_ff
+fxtag = 78f8d5eec045bb7c1ba6a7df59f36e69134ecfd1
 fxrequired = AlwaysRequired
 # Standard Fork to compare to with "git fleximod test" to ensure personal forks aren't committed
 fxDONOTUSEurl = https://github.com/ESCOMP/CMEPS.git
