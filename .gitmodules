@@ -69,7 +69,7 @@ fxDONOTUSEurl = https://github.com/ESCOMP/mizuRoute
 path = components/wrfhydro
 url = https://github.com/scrasmussen/wrf_hydro_nwm_public
 # commits from branch wrf-hydro-cesm
-fxtag = 4c400c0051bf945ac95e1bcdd1ee7a0b7e9504c6
+fxtag = ee9fed4e7bda95056b0a881d74cd83cb7254c9fd
 fxrequired = AlwaysRequired
 # Standard Fork to compare to with "git fleximod test" to ensure personal forks aren't committed
 fxDONOTUSEurl = https://github.com/NCAR/wrf_hydro_nwm_public
