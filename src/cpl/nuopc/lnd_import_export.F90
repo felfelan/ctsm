@@ -152,6 +152,7 @@ module lnd_import_export
   character(*), parameter :: Flrl_rofgwl    = 'Flrl_rofgwl'
 
   ! for CTSM-WRFHydro
+  character(*), parameter :: Flrl_rofexcess_sur       = 'Flrl_rofexcess_sur'
   character(*), parameter :: Flrl_rofh2osfc_sur       = 'Flrl_rofh2osfc_sur'
   character(*), parameter :: Flrl_rofsat_excess_sur   = 'Flrl_rofsat_excess_sur'
   character(*), parameter :: Flrl_rofinfl_excess_sur  = 'Flrl_rofinfl_excess_sur'
@@ -337,6 +338,7 @@ contains
        call fldlist_add(fldsFrLnd_num, fldsFrlnd, Flrl_rofh2osfc_sur)
        call fldlist_add(fldsFrLnd_num, fldsFrlnd, Flrl_rofsat_excess_sur)
        call fldlist_add(fldsFrLnd_num, fldsFrlnd, Flrl_rofinfl_excess_sur)
+	   call fldlist_add(fldsFrLnd_num, fldsFrlnd, Flrl_rofexcess_sur)
        call fldlist_add(fldsFrLnd_num, fldsFrlnd, Flrl_rofh2osfc_thresh)
 
     end if
@@ -957,12 +959,12 @@ contains
     end if
 
 
-    if (fldchk(exportState, Flrl_rofh2osfc_sur)) then ! qgwl sent individually to mediator
+    if (fldchk(exportState, Flrl_rofh2osfc_sur)) then 
        call state_setexport_1d(exportState, Flrl_rofh2osfc_sur, waterlnd2atmbulk_inst%qflx_rofliq_h2osfc_surf_grc(begg:), &
             init_spval=.true., rc=rc)
        if (ChkErr(rc,__LINE__,u_FILE_u)) return
     end if
-    if (fldchk(exportState, Flrl_rofsat_excess_sur)) then ! qgwl sent individually to mediator
+    if (fldchk(exportState, Flrl_rofsat_excess_sur)) then 
        call state_setexport_1d(exportState, Flrl_rofsat_excess_sur, waterlnd2atmbulk_inst%qflx_rofliq_sat_excess_surf_grc(begg:), &
             init_spval=.true., rc=rc)
        if (ChkErr(rc,__LINE__,u_FILE_u)) return
@@ -976,12 +978,41 @@ contains
             init_spval=.false., rc=rc)
        if (ChkErr(rc,__LINE__,u_FILE_u)) return
     end if
-    if (fldchk(exportState, Flrl_rofh2osfc_thresh)) then ! qgwl sent individually to mediator
-       call state_setexport_1d(exportState, Flrl_rofh2osfc_thresh, waterlnd2atmbulk_inst%qflx_rofliq_h2osfc_thresh_grc(begg:), &
+
+    ! Combined saturation-excess + infiltration-excess surface runoff
+	if (fldchk(exportState, Flrl_rofexcess_sur)) then
+
+	   do g = begg, endg
+
+		  data1d(g) = 0._r8
+
+		  ! Saturation-excess runoff
+		  if (waterlnd2atmbulk_inst%qflx_rofliq_sat_excess_surf_grc(g) /= spval) then
+			 data1d(g) = data1d(g) + &
+				  waterlnd2atmbulk_inst%qflx_rofliq_sat_excess_surf_grc(g)
+		  end if
+
+		  ! Infiltration-excess runoff
+		  if (waterlnd2atmbulk_inst%qflx_rofliq_infl_excess_surf_grc(g) /= spval) then
+			 data1d(g) = data1d(g) + &
+				  waterlnd2atmbulk_inst%qflx_rofliq_infl_excess_surf_grc(g)
+		  end if
+
+	   end do
+
+	   call state_setexport_1d(exportState, Flrl_rofexcess_sur, data1d(begg:), &
+			init_spval=.false., rc=rc)
+	   if (ChkErr(rc,__LINE__,u_FILE_u)) return
+
+	end if
+
+
+    if (fldchk(exportState, Flrl_rofh2osfc_thresh)) then 
+       call state_setexport_1d(exportState, Flrl_rofh2osfc_thresh, &
+            waterlnd2atmbulk_inst%qflx_rofliq_h2osfc_thresh_grc(begg:), &
             init_spval=.true., rc=rc)
        if (ChkErr(rc,__LINE__,u_FILE_u)) return
     end if
-
 
     if (fldchk(exportState, Flrl_rofi)) then ! ice set individually to mediator
        call state_setexport_1d(exportState, Flrl_rofi, waterlnd2atmbulk_inst%qflx_rofice_grc(begg:), &
