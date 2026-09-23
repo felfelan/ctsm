@@ -10,6 +10,7 @@ module lnd_import_export
   use shr_kind_mod            , only : r8 => shr_kind_r8, cx=>shr_kind_cx, cxx=>shr_kind_cxx, cs=>shr_kind_cs
   use shr_sys_mod             , only : shr_sys_abort
   use clm_varctl              , only : iulog, use_hillslope_routing
+  use clm_varpar              , only : nlevsoi
   use clm_time_manager        , only : get_nstep
   use decompmod               , only : bounds_type, get_proc_bounds
   use lnd2atmType             , only : lnd2atm_type
@@ -72,7 +73,7 @@ module lnd_import_export
   logical                :: force_send_to_atm   ! Force sending export data to atmosphere even if ATM is not prognostic
   integer                :: glc_nec          ! number of glc elevation classes
   integer, parameter     :: debug = 0        ! internal debug level
-  integer, parameter     :: wrfhydro_nsoil = 4
+  integer, parameter     :: wrfhydro_nsoil = 20
 
   ! import fields
   character(*), parameter :: Sa_z                = 'Sa_z'
@@ -135,12 +136,16 @@ module lnd_import_export
   character(*), parameter :: Sl_ram1        = 'Sl_ram1'
   character(*), parameter :: Sl_fv          = 'Sl_fv'
   character(*), parameter :: Sl_soilw       = 'Sl_soilw'
-  
-  ! for CTSM-WRFHydro 
+
+  ! for CTSM-WRFHydro
   character(*), parameter :: Sl_soilliq       = 'Sl_soilliq'
   character(*), parameter :: inst_soil_temperature = 'inst_soil_temperature'
   character(*), parameter :: inst_total_soil_moisture_content = 'inst_total_soil_moisture_content'
   character(*), parameter :: inst_soil_moisture_content = 'inst_soil_moisture_content'
+  character(*), parameter :: inst_soil_porosity = 'inst_soil_porosity'
+  character(*), parameter :: r2lfrc = 'r2lfrc'
+  character(*), parameter :: inst_soil_moisture_content_routing_change = &
+     'inst_soil_moisture_content_routing_change'
 
   character(*), parameter :: Fall_fco2_lnd  = 'Fall_fco2_lnd'
   character(*), parameter :: Sl_ddvel       = 'Sl_ddvel'
@@ -176,7 +181,9 @@ module lnd_import_export
 contains
 !===============================================================================
 
-  subroutine advertise_fields(gcomp, flds_scalar_name, glc_present, cism_evolve, rof_prognostic, atm_prognostic, rc)
+  ! subroutine advertise_fields(gcomp, flds_scalar_name, glc_present, cism_evolve, rof_prognostic, atm_prognostic, rc)
+subroutine advertise_fields(gcomp, flds_scalar_name, glc_present, cism_evolve, &
+     rof_prognostic, rof_is_wrfhydro, atm_prognostic, rc)
 
     use shr_carma_mod     , only : shr_carma_readnl
     use shr_ndep_mod      , only : shr_ndep_readnl
@@ -192,6 +199,7 @@ contains
     logical          , intent(in)  :: glc_present
     logical          , intent(in)  :: cism_evolve
     logical          , intent(in)  :: rof_prognostic
+    logical, intent(in) :: rof_is_wrfhydro
     logical          , intent(in)  :: atm_prognostic
     integer          , intent(out) :: rc
 
@@ -328,18 +336,25 @@ contains
 
        call fldlist_add(fldsFrLnd_num, fldsFrlnd, Sl_soilw)
        call fldlist_add(fldsFrLnd_num, fldsFrlnd, Sl_soilliq)
-       call fldlist_add(fldsFrLnd_num, fldsFrlnd, inst_soil_temperature, &
-            ungridded_lbound=1, ungridded_ubound=wrfhydro_nsoil)
-       call fldlist_add(fldsFrLnd_num, fldsFrlnd, inst_total_soil_moisture_content, &
-            ungridded_lbound=1, ungridded_ubound=wrfhydro_nsoil)
-       call fldlist_add(fldsFrLnd_num, fldsFrlnd, inst_soil_moisture_content, &
-            ungridded_lbound=1, ungridded_ubound=wrfhydro_nsoil)
 
-       call fldlist_add(fldsFrLnd_num, fldsFrlnd, Flrl_rofh2osfc_sur)
-       call fldlist_add(fldsFrLnd_num, fldsFrlnd, Flrl_rofsat_excess_sur)
-       call fldlist_add(fldsFrLnd_num, fldsFrlnd, Flrl_rofinfl_excess_sur)
-	   call fldlist_add(fldsFrLnd_num, fldsFrlnd, Flrl_rofexcess_sur)
-       call fldlist_add(fldsFrLnd_num, fldsFrlnd, Flrl_rofh2osfc_thresh)
+        if (rof_is_wrfhydro) then
+
+           call fldlist_add(fldsFrLnd_num, fldsFrlnd, inst_soil_temperature, &
+                ungridded_lbound=1, ungridded_ubound=wrfhydro_nsoil)
+           call fldlist_add(fldsFrLnd_num, fldsFrlnd, inst_total_soil_moisture_content, &
+                ungridded_lbound=1, ungridded_ubound=wrfhydro_nsoil)
+           call fldlist_add(fldsFrLnd_num, fldsFrlnd, inst_soil_moisture_content, &
+                ungridded_lbound=1, ungridded_ubound=wrfhydro_nsoil)
+           call fldlist_add(fldsFrLnd_num, fldsFrlnd, inst_soil_porosity, &
+                ungridded_lbound=1, ungridded_ubound=wrfhydro_nsoil)
+
+           call fldlist_add(fldsFrLnd_num, fldsFrlnd, Flrl_rofh2osfc_sur)
+           call fldlist_add(fldsFrLnd_num, fldsFrlnd, Flrl_rofsat_excess_sur)
+           call fldlist_add(fldsFrLnd_num, fldsFrlnd, Flrl_rofinfl_excess_sur)
+           call fldlist_add(fldsFrLnd_num, fldsFrlnd, Flrl_rofexcess_sur)
+           call fldlist_add(fldsFrLnd_num, fldsFrlnd, Flrl_rofh2osfc_thresh)
+
+        end if
 
     end if
 
@@ -441,6 +456,16 @@ contains
        call fldlist_add(fldsToLnd_num, fldsToLnd, Flrr_volrmch )
        call fldlist_add(fldsToLnd_num, fldsToLnd, Sr_tdepth )
        call fldlist_add(fldsToLnd_num, fldsToLnd, Sr_tdepth_max )
+
+    if (rof_is_wrfhydro) then
+
+       call fldlist_add(fldsToLnd_num, fldsToLnd, &
+            inst_soil_moisture_content_routing_change, &
+            ungridded_lbound=1, ungridded_ubound=wrfhydro_nsoil)
+
+       call fldlist_add(fldsToLnd_num, fldsToLnd, r2lfrc)
+    end if
+
     end if
 
     if (glc_present) then
@@ -519,6 +544,13 @@ contains
     use QSatMod                 , only: QSat
     use lnd_import_export_utils , only: derive_quantities, check_for_errors
 
+    use clm_instMod, only : water_inst
+    use clm_varcon, only : denh2o, denice, spval
+    use ColumnType       , only : col
+    use subgridAveMod    , only : c2g
+    use, intrinsic :: ieee_arithmetic, only : ieee_is_finite
+
+
     ! input/output variabes
     type(ESMF_GridComp)                         :: gcomp
     type(bounds_type)           , intent(in)    :: bounds         ! bounds
@@ -538,7 +570,8 @@ contains
     character(len=CS)         :: fldname
     integer                   :: num
     integer                   :: begg, endg ! bounds
-    integer                   :: g,i,k,n    ! indices
+    ! integer                   :: g,i,k,n    ! indices
+    integer :: g,i,k,n,c,j
     real(r8)                  :: qsat_kg_kg ! saturation specific humidity (kg/kg)
     real(r8)                  :: forc_pbot  ! atmospheric pressure (Pa)
     real(r8)                  :: co2_ppmv_input(bounds%begg:bounds%endg)   ! temporary
@@ -549,6 +582,21 @@ contains
     real(r8)                  :: forc_snowl(bounds%begg:bounds%endg) ! snowfxl Atm flux  mm/s
     real(r8)                  :: forc_noy(bounds%begg:bounds%endg)
     real(r8)                  :: forc_nhx(bounds%begg:bounds%endg)
+
+    real(r8) :: wrfhydro_slc_delta_grc(bounds%begg:bounds%endg, 1:wrfhydro_nsoil)
+    real(r8) :: feedback_unit_col(bounds%begc:bounds%endc, 1:wrfhydro_nsoil)
+    real(r8) :: feedback_scale_grc(bounds%begg:bounds%endg, 1:wrfhydro_nsoil)
+    real(r8) :: feedback_delta_safe_col( &
+         bounds%begc:bounds%endc, 1:wrfhydro_nsoil)
+
+    real(r8) :: feedback_delta_col( &
+         bounds%begc:bounds%endc, 1:wrfhydro_nsoil)
+
+    real(r8) :: feedback_target_grc( &
+         bounds%begg:bounds%endg, 1:wrfhydro_nsoil)
+
+    real(r8) :: r2lfrc_grc(bounds%begg:bounds%endg)
+
     real(r8)                  :: frac_grc(bounds%begg:bounds%endg, 0:glc_nec)
     real(r8)                  :: topo_grc(bounds%begg:bounds%endg, 0:glc_nec)
     real(r8)                  :: hflx_grc(bounds%begg:bounds%endg, 0:glc_nec)
@@ -627,6 +675,138 @@ contains
     if (fldchk(importState, Sa_methane)) then
        call state_getimport_1d(importState, Sa_methane, atm2lnd_inst%forc_pch4_grc(begg:), rc=rc)
        if (ChkErr(rc,__LINE__,u_FILE_u)) return
+    end if
+
+    ! ---------------------------------------------------------------
+    ! ROF -> LND spatial coverage fraction
+    ! ---------------------------------------------------------------
+
+    r2lfrc_grc(:) = 0._r8
+
+    if (fldchk(importState, r2lfrc)) then
+
+       call state_getimport_1d(importState, r2lfrc, &
+            r2lfrc_grc(begg:), rc=rc)
+       if (ChkErr(rc,__LINE__,u_FILE_u)) return
+
+    end if
+
+    !-----------------------------------------------------------------------
+    ! Compute the effective CTSM column-to-gridcell scaling for
+    ! liquid-soil-moisture feedback.
+    !-----------------------------------------------------------------------
+
+    feedback_unit_col(:,:) = spval
+
+    do j = 1, wrfhydro_nsoil
+       do c = bounds%begc, bounds%endc
+
+          if (.not. ieee_is_finite( &
+               water_inst%waterstatebulk_inst%h2osoi_liq_col(c,j))) cycle
+
+          if (.not. ieee_is_finite(col%dz(c,j))) cycle
+
+          if (water_inst%waterstatebulk_inst%h2osoi_liq_col(c,j) == spval) cycle
+          if (col%dz(c,j) == spval) cycle
+          if (col%dz(c,j) <= 0._r8) cycle
+
+          feedback_unit_col(c,j) = 1.0_r8
+
+       end do
+    end do
+
+    call c2g(bounds, wrfhydro_nsoil, &
+         feedback_unit_col, &
+         feedback_scale_grc, &
+         c2l_scale_type='urbans', &
+         l2g_scale_type='unity')
+
+    if (fldchk(importState, inst_soil_moisture_content_routing_change)) then
+
+       call state_getimport_2d(importState, &
+            inst_soil_moisture_content_routing_change, &
+            wrfhydro_slc_delta_grc(begg:,1:wrfhydro_nsoil), rc=rc)
+       if (ChkErr(rc,__LINE__,u_FILE_u)) return
+
+
+    feedback_delta_col(:,:) = spval
+    feedback_target_grc(:,:) = spval
+
+    do j = 1, wrfhydro_nsoil
+
+       do g = bounds%begg, bounds%endg
+
+          if (r2lfrc_grc(g) <= 0._r8) cycle
+
+          if (.not. ieee_is_finite(wrfhydro_slc_delta_grc(g,j))) cycle
+          if (wrfhydro_slc_delta_grc(g,j) == spval) cycle
+
+          feedback_target_grc(g,j) = &
+               r2lfrc_grc(g) * wrfhydro_slc_delta_grc(g,j)
+
+       end do
+
+       do c = bounds%begc, bounds%endc
+
+          g = col%gridcell(c)
+
+          if (.not. col%active(c)) cycle
+          if (col%wtgcell(c) == 0._r8) cycle
+
+          if (r2lfrc_grc(g) <= 0._r8) cycle
+
+          if (.not. ieee_is_finite( &
+               water_inst%waterstatebulk_inst%h2osoi_liq_col(c,j))) cycle
+          if (.not. ieee_is_finite(col%dz(c,j))) cycle
+
+          if (water_inst%waterstatebulk_inst%h2osoi_liq_col(c,j) == spval) cycle
+          if (col%dz(c,j) == spval) cycle
+          if (col%dz(c,j) <= 0._r8) cycle
+
+          if (.not. ieee_is_finite(feedback_scale_grc(g,j))) cycle
+          if (feedback_scale_grc(g,j) == spval) cycle
+          if (feedback_scale_grc(g,j) <= 0._r8) cycle
+
+          feedback_delta_col(c,j) = &
+               feedback_target_grc(g,j) / feedback_scale_grc(g,j)
+
+       end do
+    end do
+
+    feedback_delta_safe_col(:,:) = spval
+
+    do j = 1, wrfhydro_nsoil
+       do c = bounds%begc, bounds%endc
+
+          if (feedback_delta_col(c,j) == spval) cycle
+          if (.not. ieee_is_finite(feedback_delta_col(c,j))) cycle
+
+          feedback_delta_safe_col(c,j) = max( &
+               feedback_delta_col(c,j), &
+              -water_inst%waterstatebulk_inst%h2osoi_liq_col(c,j) / &
+               (denh2o * col%dz(c,j)) )
+
+       end do
+    end do
+
+    do j = 1, wrfhydro_nsoil
+       do c = bounds%begc, bounds%endc
+
+          if (feedback_delta_safe_col(c,j) == spval) cycle
+          if (.not. ieee_is_finite(feedback_delta_safe_col(c,j))) cycle
+
+          water_inst%waterstatebulk_inst%h2osoi_liq_col(c,j) = max(0._r8, &
+               water_inst%waterstatebulk_inst%h2osoi_liq_col(c,j) + &
+               feedback_delta_safe_col(c,j) * denh2o * col%dz(c,j))
+
+          water_inst%waterstatebulk_inst%h2osoi_vol_col(c,j) = &
+               water_inst%waterstatebulk_inst%h2osoi_liq_col(c,j) / &
+                    (col%dz(c,j) * denh2o) + &
+               water_inst%waterstatebulk_inst%h2osoi_ice_col(c,j) / &
+                    (col%dz(c,j) * denice)
+       end do
+    end do
+
     end if
 
     ! Flooding from river
@@ -941,6 +1121,15 @@ contains
     call export_liquid_soil_moisture(exportState, bounds, rc)
     if (ChkErr(rc,__LINE__,u_FILE_u)) return
 
+    call export_soil_porosity(exportState, bounds, rc)
+    if (ChkErr(rc,__LINE__,u_FILE_u)) return
+
+	! if (fldchk(exportState, inst_soil_moisture_content)) then
+	   ! call state_setexport_2d(exportState, inst_soil_moisture_content, &
+			 ! waterlnd2atmbulk_inst%h2osoi_liq_grc(begg:,1:wrfhydro_nsoil), init_spval=.true., rc=rc)
+	   ! if (ChkErr(rc,__LINE__,u_FILE_u)) return
+	! end if
+
     ! surface runoff is the sum of qflx_over, qflx_h2osfc_surf
     ! do g = begg,endg
     !   data1d(g) = waterlnd2atmbulk_inst%qflx_rofliq_qsur_grc(g) + &
@@ -959,12 +1148,12 @@ contains
     end if
 
 
-    if (fldchk(exportState, Flrl_rofh2osfc_sur)) then 
+    if (fldchk(exportState, Flrl_rofh2osfc_sur)) then
        call state_setexport_1d(exportState, Flrl_rofh2osfc_sur, waterlnd2atmbulk_inst%qflx_rofliq_h2osfc_surf_grc(begg:), &
             init_spval=.true., rc=rc)
        if (ChkErr(rc,__LINE__,u_FILE_u)) return
     end if
-    if (fldchk(exportState, Flrl_rofsat_excess_sur)) then 
+    if (fldchk(exportState, Flrl_rofsat_excess_sur)) then
        call state_setexport_1d(exportState, Flrl_rofsat_excess_sur, waterlnd2atmbulk_inst%qflx_rofliq_sat_excess_surf_grc(begg:), &
             init_spval=.true., rc=rc)
        if (ChkErr(rc,__LINE__,u_FILE_u)) return
@@ -1007,7 +1196,7 @@ contains
 	end if
 
 
-    if (fldchk(exportState, Flrl_rofh2osfc_thresh)) then 
+    if (fldchk(exportState, Flrl_rofh2osfc_thresh)) then
        call state_setexport_1d(exportState, Flrl_rofh2osfc_thresh, &
             waterlnd2atmbulk_inst%qflx_rofliq_h2osfc_thresh_grc(begg:), &
             init_spval=.true., rc=rc)
@@ -1063,31 +1252,108 @@ contains
   end subroutine export_fields
 
   !===============================================================================
+  ! subroutine export_soil_temperature(exportState, bounds, rc)
+
+    ! use clm_instMod   , only : temperature_inst
+    ! use subgridAveMod, only : c2g
+
+    ! type(ESMF_State), intent(in)  :: exportState
+    ! type(bounds_type), intent(in) :: bounds
+    ! integer, intent(out)          :: rc
+
+    ! real(r8) :: soil_temperature_grc(bounds%begg:bounds%endg, 1:wrfhydro_nsoil)
+
+    ! rc = ESMF_SUCCESS
+
+    ! if (.not. fldchk(exportState, inst_soil_temperature)) return
+
+    !!! Export CTSM soil states for the soil layers used by WRF-Hydro.
+    ! call c2g(bounds, wrfhydro_nsoil, &
+         ! temperature_inst%t_soisno_col(bounds%begc:bounds%endc, 1:wrfhydro_nsoil), &
+         ! soil_temperature_grc(bounds%begg:bounds%endg, 1:wrfhydro_nsoil), &
+         ! c2l_scale_type='urbanf', l2g_scale_type='unity')
+
+    ! call state_setexport_2d(exportState, inst_soil_temperature, &
+         ! soil_temperature_grc, init_spval=.true., rc=rc)
+    ! if (ChkErr(rc,__LINE__,u_FILE_u)) return
+
+  ! end subroutine export_soil_temperature
   subroutine export_soil_temperature(exportState, bounds, rc)
 
-    use clm_instMod   , only : temperature_inst
-    use subgridAveMod, only : c2g
+     use clm_instMod    , only : temperature_inst
+     use clm_varcon     , only : spval
+     use subgridAveMod  , only : c2g
+     use, intrinsic :: ieee_arithmetic, only : ieee_is_finite
 
-    type(ESMF_State), intent(in)  :: exportState
-    type(bounds_type), intent(in) :: bounds
-    integer, intent(out)          :: rc
+     type(ESMF_State), intent(in)  :: exportState
+     type(bounds_type), intent(in) :: bounds
+     integer, intent(out)          :: rc
 
-    real(r8) :: soil_temperature_grc(bounds%begg:bounds%endg, 1:wrfhydro_nsoil)
+     integer :: c
+     integer :: g
+     integer :: j
 
-    rc = ESMF_SUCCESS
+     real(r8) :: soil_temperature_col( &
+          bounds%begc:bounds%endc, 1:nlevsoi)
 
-    if (.not. fldchk(exportState, inst_soil_temperature)) return
+     real(r8) :: soil_temperature_grc( &
+          bounds%begg:bounds%endg, 1:nlevsoi)
 
-    ! The CTSM 4SL_2m configuration uses the same four soil-layer
-    ! boundaries as WRF-Hydro: 0.10, 0.40, 1.00, and 2.00 m.
-    call c2g(bounds, wrfhydro_nsoil, &
-         temperature_inst%t_soisno_col(bounds%begc:bounds%endc, 1:wrfhydro_nsoil), &
-         soil_temperature_grc(bounds%begg:bounds%endg, 1:wrfhydro_nsoil), &
-         c2l_scale_type='urbanf', l2g_scale_type='unity')
+     rc = ESMF_SUCCESS
 
-    call state_setexport_2d(exportState, inst_soil_temperature, &
-         soil_temperature_grc, init_spval=.true., rc=rc)
-    if (ChkErr(rc,__LINE__,u_FILE_u)) return
+     if (.not. fldchk(exportState, inst_soil_temperature)) return
+
+     ! Prepare CTSM soil temperature for WRF-Hydro.
+     ! Invalid / NaN column-layer temperatures are left as SPVAL.
+     soil_temperature_col(:,:) = spval
+
+     do j = 1, nlevsoi
+        do c = bounds%begc, bounds%endc
+
+           ! Skip NaN / Inf values
+           if (.not. ieee_is_finite( &
+                temperature_inst%t_soisno_col(c,j))) cycle
+
+           ! Skip CTSM missing values
+           if (temperature_inst%t_soisno_col(c,j) == spval) cycle
+
+           ! Valid temperature
+           soil_temperature_col(c,j) = &
+                temperature_inst%t_soisno_col(c,j)
+
+        end do
+     end do
+
+     ! Aggregate column values to gridcells.
+     call c2g(bounds, nlevsoi, &
+          soil_temperature_col( &
+          bounds%begc:bounds%endc, 1:nlevsoi), &
+          soil_temperature_grc( &
+          bounds%begg:bounds%endg, 1:nlevsoi), &
+          c2l_scale_type='urbanf', &
+          l2g_scale_type='unity')
+
+     ! Final safety check:
+     ! do not allow NaN / Inf to enter the NUOPC export state.
+     do j = 1, nlevsoi
+        do g = bounds%begg, bounds%endg
+
+           if (.not. ieee_is_finite(soil_temperature_grc(g,j))) then
+              soil_temperature_grc(g,j) = spval
+           endif
+
+        end do
+     end do
+
+     ! Export to NUOPC / WRF-Hydro.
+     call state_setexport_2d( &
+          exportState, &
+          inst_soil_temperature, &
+          soil_temperature_grc, &
+          init_spval=.true., &
+          rc=rc)
+
+     if (ChkErr(rc,__LINE__,u_FILE_u)) return
 
   end subroutine export_soil_temperature
 
@@ -1105,60 +1371,194 @@ contains
 
     if (.not. fldchk(exportState, inst_total_soil_moisture_content)) return
 
-    ! The CTSM 4SL_2m configuration uses the same four soil-layer
-    ! boundaries as WRF-Hydro: 0.10, 0.40, 1.00, and 2.00 m.
+    ! Export CTSM soil states for the soil layers used by WRF-Hydro.
     call state_setexport_2d(exportState, inst_total_soil_moisture_content, &
-         waterlnd2atmbulk_inst%h2osoi_vol_grc(bounds%begg:bounds%endg, 1:wrfhydro_nsoil), &
+         waterlnd2atmbulk_inst%h2osoi_vol_grc(bounds%begg:bounds%endg, 1:nlevsoi), &
          init_spval=.true., rc=rc)
     if (ChkErr(rc,__LINE__,u_FILE_u)) return
 
   end subroutine export_total_soil_moisture
 
   !===============================================================================
+  ! subroutine export_liquid_soil_moisture(exportState, bounds, rc)
+
+    ! use clm_instMod   , only : water_inst
+    ! use clm_varcon    , only : denh2o, spval
+    ! use ColumnType    , only : col
+    ! use subgridAveMod , only : c2g
+
+    ! type(ESMF_State), intent(in)  :: exportState
+    ! type(bounds_type), intent(in) :: bounds
+    ! integer, intent(out)          :: rc
+
+    ! integer  :: c
+    ! integer  :: j
+    ! real(r8) :: liquid_soil_moisture_col(bounds%begc:bounds%endc, 1:wrfhydro_nsoil)
+    ! real(r8) :: liquid_soil_moisture_grc(bounds%begg:bounds%endg, 1:wrfhydro_nsoil)
+
+    ! rc = ESMF_SUCCESS
+
+    ! if (.not. fldchk(exportState, inst_soil_moisture_content)) return
+
+    !!!Export CTSM soil states for the soil layers used by WRF-Hydro.
+    ! liquid_soil_moisture_col = spval
+    ! do j = 1, wrfhydro_nsoil
+       ! do c = bounds%begc, bounds%endc
+          ! if (water_inst%waterstatebulk_inst%h2osoi_liq_col(c,j) /= spval .and. &
+               ! col%dz(c,j) /= spval .and. col%dz(c,j) > 0._r8) then
+             !!![kg m-2] / ([kg m-3] * [m]) = [m3 m-3]
+             ! liquid_soil_moisture_col(c,j) = &
+                  ! water_inst%waterstatebulk_inst%h2osoi_liq_col(c,j) / (denh2o * col%dz(c,j))
+          ! end if
+       ! end do
+    ! end do
+
+    ! call c2g(bounds, wrfhydro_nsoil, &
+         ! liquid_soil_moisture_col(bounds%begc:bounds%endc, 1:wrfhydro_nsoil), &
+         ! liquid_soil_moisture_grc(bounds%begg:bounds%endg, 1:wrfhydro_nsoil), &
+         ! c2l_scale_type='urbanf', l2g_scale_type='unity')
+
+    ! call state_setexport_2d(exportState, inst_soil_moisture_content, &
+         ! liquid_soil_moisture_grc, init_spval=.true., rc=rc)
+    ! if (ChkErr(rc,__LINE__,u_FILE_u)) return
+
+  ! end subroutine export_liquid_soil_moisture
+
   subroutine export_liquid_soil_moisture(exportState, bounds, rc)
 
-    use clm_instMod   , only : water_inst
-    use clm_varcon    , only : denh2o, spval
-    use ColumnType    , only : col
-    use subgridAveMod , only : c2g
+     use clm_instMod, only : water_inst
+     use clm_varcon    , only : denh2o, spval
+     use ColumnType    , only : col
+     use subgridAveMod , only : c2g
+     use, intrinsic :: ieee_arithmetic, only : ieee_is_finite
 
-    type(ESMF_State), intent(in)  :: exportState
-    type(bounds_type), intent(in) :: bounds
-    integer, intent(out)          :: rc
+     type(ESMF_State), intent(in)  :: exportState
+     type(bounds_type), intent(in) :: bounds
+     integer, intent(out)          :: rc
 
-    integer  :: c
-    integer  :: j
-    real(r8) :: liquid_soil_moisture_col(bounds%begc:bounds%endc, 1:wrfhydro_nsoil)
-    real(r8) :: liquid_soil_moisture_grc(bounds%begg:bounds%endg, 1:wrfhydro_nsoil)
+     integer :: c, g
+     integer :: j
 
-    rc = ESMF_SUCCESS
+     real(r8) :: liquid_soil_moisture_col( &
+          bounds%begc:bounds%endc, 1:nlevsoi)
 
-    if (.not. fldchk(exportState, inst_soil_moisture_content)) return
+     real(r8) :: liquid_soil_moisture_grc( &
+          bounds%begg:bounds%endg, 1:nlevsoi)
 
-    ! The CTSM 4SL_2m configuration uses the same four soil-layer
-    ! boundaries as WRF-Hydro: 0.10, 0.40, 1.00, and 2.00 m.
-    liquid_soil_moisture_col = spval
-    do j = 1, wrfhydro_nsoil
-       do c = bounds%begc, bounds%endc
-          if (water_inst%waterstatebulk_inst%h2osoi_liq_col(c,j) /= spval .and. &
-               col%dz(c,j) /= spval .and. col%dz(c,j) > 0._r8) then
-             ! [kg m-2] / ([kg m-3] * [m]) = [m3 m-3]
-             liquid_soil_moisture_col(c,j) = &
-                  water_inst%waterstatebulk_inst%h2osoi_liq_col(c,j) / (denh2o * col%dz(c,j))
-          end if
-       end do
-    end do
+     rc = ESMF_SUCCESS
 
-    call c2g(bounds, wrfhydro_nsoil, &
-         liquid_soil_moisture_col(bounds%begc:bounds%endc, 1:wrfhydro_nsoil), &
-         liquid_soil_moisture_grc(bounds%begg:bounds%endg, 1:wrfhydro_nsoil), &
-         c2l_scale_type='urbanf', l2g_scale_type='unity')
+     if (.not. fldchk(exportState, inst_soil_moisture_content)) return
 
-    call state_setexport_2d(exportState, inst_soil_moisture_content, &
-         liquid_soil_moisture_grc, init_spval=.true., rc=rc)
-    if (ChkErr(rc,__LINE__,u_FILE_u)) return
+     !--------------------------------------------------------------------
+     ! Convert CTSM liquid soil water [kg m-2]
+     ! to volumetric liquid soil moisture [m3 m-3].
+     !
+     ! Invalid / inactive column-layer values remain SPVAL and are
+     ! handled by c2g during column-to-gridcell aggregation.
+     !--------------------------------------------------------------------
+
+     liquid_soil_moisture_col(:,:) = spval
+
+     do j = 1, nlevsoi
+
+        do c = bounds%begc, bounds%endc
+
+           ! Invalid liquid-water state
+           if (.not. ieee_is_finite( &
+                water_inst%waterstatebulk_inst%h2osoi_liq_col(c,j))) cycle
+
+           ! Invalid layer thickness
+           if (.not. ieee_is_finite(col%dz(c,j))) cycle
+
+           ! Missing values
+           if (water_inst%waterstatebulk_inst%h2osoi_liq_col(c,j) == spval) cycle
+           if (col%dz(c,j) == spval) cycle
+
+           ! Invalid physical thickness
+           if (col%dz(c,j) <= 0._r8) cycle
+
+           liquid_soil_moisture_col(c,j) = &
+                water_inst%waterstatebulk_inst%h2osoi_liq_col(c,j) / &
+                (denh2o * col%dz(c,j))
+
+        end do
+     end do
+
+     ! Aggregate column values to CTSM gridcells
+     call c2g(bounds, nlevsoi, &
+          liquid_soil_moisture_col( &
+          bounds%begc:bounds%endc,1:nlevsoi), &
+          liquid_soil_moisture_grc( &
+          bounds%begg:bounds%endg,1:nlevsoi), &
+          c2l_scale_type='urbans', &
+          l2g_scale_type='unity')
+
+     ! Export to NUOPC
+     call state_setexport_2d( &
+          exportState, &
+          inst_soil_moisture_content, &
+          liquid_soil_moisture_grc, &
+          init_spval=.true., &
+          rc=rc)
+
+     if (ChkErr(rc,__LINE__,u_FILE_u)) return
 
   end subroutine export_liquid_soil_moisture
+
+  !===============================================================================
+
+  subroutine export_soil_porosity(exportState, bounds, rc)
+
+     use clm_instMod   , only : soilstate_inst
+     use clm_varcon    , only : spval
+     use subgridAveMod , only : c2g
+     use, intrinsic :: ieee_arithmetic, only : ieee_is_finite
+
+     type(ESMF_State), intent(in)  :: exportState
+     type(bounds_type), intent(in) :: bounds
+     integer, intent(out)          :: rc
+
+     integer :: g
+     integer :: j
+
+     real(r8) :: soil_porosity_grc( &
+          bounds%begg:bounds%endg, 1:nlevsoi)
+
+     rc = ESMF_SUCCESS
+
+     if (.not. fldchk(exportState, inst_soil_porosity)) return
+
+     ! CTSM watsat_col is volumetric soil water at saturation
+     ! (soil porosity) [m3 m-3].
+     soil_porosity_grc(:,:) = spval
+
+     call c2g(bounds, nlevsoi, &
+          soilstate_inst%watsat_col( &
+               bounds%begc:bounds%endc, 1:nlevsoi), &
+          soil_porosity_grc( &
+               bounds%begg:bounds%endg, 1:nlevsoi), &
+          c2l_scale_type='urbans', &
+          l2g_scale_type='unity')
+
+     ! Final safety check.
+     do j = 1, nlevsoi
+        do g = bounds%begg, bounds%endg
+           if (.not. ieee_is_finite(soil_porosity_grc(g,j))) then
+              soil_porosity_grc(g,j) = spval
+           endif
+        enddo
+     enddo
+
+     call state_setexport_2d( &
+          exportState, &
+          inst_soil_porosity, &
+          soil_porosity_grc, &
+          init_spval=.true., &
+          rc=rc)
+
+     if (ChkErr(rc,__LINE__,u_FILE_u)) return
+
+  end subroutine export_soil_porosity
 
   !===============================================================================
   subroutine fldlist_add(num, fldlist, stdname, ungridded_lbound, ungridded_ubound)
@@ -1549,7 +1949,7 @@ contains
     integer, target    :: tmp(1)
     type(ESMF_VM)      :: vm
     character(*), parameter :: nml_name = "ctsm_nuopc_cap" ! MUST match with namelist name below
-    
+
 
     namelist  /ctsm_nuopc_cap/ force_send_to_atm
 
@@ -1574,7 +1974,7 @@ contains
 
     ! Broadcast namelist to all processors
     call ESMF_VMBroadcast(vm, tmp, 1, 0, rc=rc)
-   
+
     force_send_to_atm = (tmp(1) == 1)
     if (ChkErr(rc,__LINE__,u_FILE_u)) return
 

@@ -205,6 +205,7 @@ contains
     logical           :: cism_evolve
     character(len=CL) :: atm_model
     character(len=CL) :: rof_model
+    logical           :: rof_is_wrfhydro
     character(len=CL) :: glc_model
     character(len=*), parameter :: subname=trim(modName)//':(InitializeAdvertise) '
     character(len=*), parameter :: format = "('("//trim(subname)//") :',A)"
@@ -272,6 +273,9 @@ contains
     read(cvalue,*) flds_scalar_index_nextsw_cday
     call NUOPC_CompAttributeGet(gcomp, name='ROF_model', value=rof_model, rc=rc)
     if (ChkErr(rc,__LINE__,u_FILE_u)) return
+
+    rof_is_wrfhydro = (trim(rof_model) == 'wrfhydro')
+
     if (trim(rof_model) == 'srof' .or. trim(rof_model) == 'drof') then
        rof_prognostic = .false.
     else
@@ -308,6 +312,7 @@ contains
     if (masterproc) then
        write(iulog,'(a   )')' atm component                 = '//trim(atm_model)
        write(iulog,'(a   )')' rof component                 = '//trim(rof_model)
+       write(iulog,'(a,L2)')' rof_is_wrfhydro                = ',rof_is_wrfhydro
        write(iulog,'(a   )')' glc component                 = '//trim(glc_model)
        write(iulog,'(a,L2)')' atm_prognostic                = ',atm_prognostic
        write(iulog,'(a,L2)')' rof_prognostic                = ',rof_prognostic
@@ -328,7 +333,10 @@ contains
     call control_setNL("lnd_in"//trim(inst_suffix))
 
 
-    call advertise_fields(gcomp, flds_scalar_name, glc_present, cism_evolve, rof_prognostic, atm_prognostic, rc)
+    ! call advertise_fields(gcomp, flds_scalar_name, glc_present, cism_evolve, rof_prognostic, atm_prognostic, rc)
+    call advertise_fields(gcomp, flds_scalar_name, glc_present, cism_evolve, &
+        rof_prognostic, rof_is_wrfhydro, atm_prognostic, rc)
+
     if (ChkErr(rc,__LINE__,u_FILE_u)) return
 
     !----------------------------------------------------------------------------
