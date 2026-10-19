@@ -1482,7 +1482,7 @@ contains
              end if! end of jwt if construct
 
              zwt(c) = max(0.0_r8,zwt(c))
-             ! zwt(c) = min(80._r8,zwt(c))
+             zwt(c) = min(120._r8,zwt(c))
 
           endif
 
@@ -2299,7 +2299,7 @@ contains
           endif
           
           zwt(c) = max(0.0_r8,zwt(c))
-          ! zwt(c) = min(80._r8,zwt(c))
+          zwt(c) = min(120._r8,zwt(c))
           
        end do
 
