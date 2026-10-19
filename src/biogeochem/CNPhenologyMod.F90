@@ -1995,7 +1995,15 @@ contains
                cphase(p) = 3._r8
                bglfr(p) = 1._r8/(leaf_long(ivt(p))*dayspyr*secspday)
             end if
-
+            ! Reset planting state for crops spanning two calendar years
+            if (cphase(p) == 4._r8) then
+               if (idop(p) > jday) then
+                  cropplant(p) = .false.
+                  idop(p) = NOT_PLANTED
+               else
+                  cropplant(p) = .true.
+               end if
+            end if
             ! continue fertilizer application while in phase 2;
             ! assumes that onset of phase 2 took one time step only
 
