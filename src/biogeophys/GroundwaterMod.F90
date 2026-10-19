@@ -410,11 +410,15 @@ contains
 
           ! IF there is pumping, the GW lateral flow is ruled by Combination of Darcy's and Theim
           ! else if (ZeroHydroCell_glob(g)== 0 .and. GW_ratio_long(g) * qirrig_long(g) > 0._r8) then
-
+	! Prevent net lateral groundwater outflow when WTD reaches 80 m
+	  if (zwt_glob(g) >= 79.9_r8 .and. Qn_glob(g) < 0._r8) then
+	     Qn_glob(g) = 0._r8
+	  end if
              Qgw_lateral_g(g) = (Qn_glob(g) / (grc%area(g) * km2_to_mm2)) * dtime
           end if
  
        end do
+
 
        do fc = 1, num_hydrologyc
           c = filter_hydrologyc(fc)
@@ -505,7 +509,7 @@ contains
               end if! end of jwt if construct
 
               zwt(c) = max(0.0_r8,zwt(c))
-              ! zwt(c) = min(80._r8,zwt(c))
+              zwt(c) = min(120._r8,zwt(c))
           end if
        end do
 
@@ -786,7 +790,7 @@ contains
                  end if! end of jwt if construct
 
                  zwt(c) = max(0.0_r8,zwt(c))
-                 ! zwt(c) = min(80._r8,zwt(c))    
+                 zwt(c) = min(120._r8,zwt(c))    
           end do
        end if
        ! To get the weighted average ZWT accross all columns within each cell  
@@ -967,7 +971,10 @@ contains
 
              QlatField_north(g) = (t_edge + b_edge)/2._r8
              QlatField_east(g)  = (r_edge + l_edge)/2._r8
-
+         ! Prevent net lateral groundwater outflow when WTD reaches 80 m
+          if (zwt_glob(g) >= 79.9_r8 .and. Qn_glob(g) < 0._r8) then
+             Qn_glob(g) = 0._r8
+          end if
              Qgw_lateral_g(g) = (Qn_glob(g) / (grc%area(g) * km2_to_mm2)) * dtime
           end if
  
@@ -1074,7 +1081,7 @@ contains
               end if! end of jwt if construct
 
               zwt(c) = max(0.0_r8,zwt(c))
-              ! zwt(c) = min(80._r8,zwt(c))
+              zwt(c) = min(120._r8,zwt(c))
           end if
        end do
 
@@ -1349,7 +1356,7 @@ contains
                  end if! end of jwt if construct
 
                  zwt(c) = max(0.0_r8,zwt(c))
-                 ! zwt(c) = min(80._r8,zwt(c))    
+                 zwt(c) = min(120._r8,zwt(c))  
           end do
        end if
 	
@@ -1664,7 +1671,7 @@ contains
               end if! end of jwt if construct
 
               zwt(c) = max(0.0_r8,zwt(c))
-              ! zwt(c) = min(80._r8,zwt(c))
+              zwt(c) = min(120._r8,zwt(c))
           end if
        end do
 
@@ -1865,7 +1872,7 @@ contains
                  end if! end of jwt if construct
 
                  zwt(c) = max(0.0_r8,zwt(c))
-                 ! zwt(c) = min(80._r8,zwt(c))    
+                 zwt(c) = min(120._r8,zwt(c))    
           end do
        end if
 
