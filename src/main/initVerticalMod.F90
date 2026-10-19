@@ -125,7 +125,6 @@ contains
     real(r8) ,pointer     :: std (:)           ! read in - topo_std 
     real(r8) ,pointer     :: tslope (:)        ! read in - topo_slope
     real(r8) ,pointer     :: GWratio (:)       ! FFelfelani Comment: read in - USGS GW ratio
-    real(r8) ,pointer     :: FEDEPTH (:)       ! FFelfelani Comment: read in - FEDEPTH
     real(r8) ,pointer     :: HGT_M (:)         ! FFelfelani Comment: read in - HGT_M
     real(r8)              :: slope0            ! temporary
     real(r8)              :: slopebeta         ! temporary
@@ -762,22 +761,6 @@ contains
        col%GW_ratio(c) = max(GWratio(g), 0.0_r8)
     end do
     deallocate(GWratio)
-
-    allocate(FEDEPTH(bounds%begg:bounds%endg))
-    call ncd_io(ncid=ncid, varname='FDEPTH', flag='read', data=FEDEPTH, dim1name=grlnd, readvar=readvar)
-    if (.not. readvar) then
-       call shr_sys_abort(' ERROR: FDEPTH NOT on surfdata file'//&
-            errMsg(sourcefile, __LINE__))
-    end if
-	
-    ! Set Column USGS GW ratio	
-    do c = begc,endc
-       g = col%gridcell(c)
-       ! check for near zero slopes, set minimum value
-       col%FEDEPTH(c) = max(FEDEPTH(g), 0.0_r8)
-    end do
-    deallocate(FEDEPTH)
-
 
     allocate(HGT_M(bounds%begg:bounds%endg))
     call ncd_io(ncid=ncid, varname='HGT_M', flag='read', data=HGT_M, dim1name=grlnd, readvar=readvar)
