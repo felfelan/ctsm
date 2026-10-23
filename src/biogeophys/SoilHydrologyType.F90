@@ -24,7 +24,6 @@ Module SoilHydrologyType
      ! NON-VIC
      real(r8), pointer :: frost_table_col   (:)     ! col frost table depth                    
      real(r8), pointer :: zwt_col           (:)     ! col water table depth
-     real(r8), pointer :: rechclim_col           (:)     ! col rechclim
      real(r8), pointer :: zwts_col          (:)     ! col water table depth, the shallower of the two water depths
      real(r8), pointer :: zwt_perched_col   (:)     ! col perched water table depth
      real(r8), pointer :: wa_col            (:)     ! col water in the unconfined aquifer (mm)
@@ -123,7 +122,6 @@ contains
     allocate(this%num_substeps_col  (begc:endc))                 ; this%num_substeps_col  (:)     = nan
     allocate(this%frost_table_col   (begc:endc))                 ; this%frost_table_col   (:)     = nan
     allocate(this%zwt_col           (begc:endc))                 ; this%zwt_col           (:)     = nan
-    allocate(this%rechclim_col      (begc:endc))                 ; this%rechclim_col      (:)     = nan
     allocate(this%zwt_perched_col   (begc:endc))                 ; this%zwt_perched_col   (:)     = nan
     allocate(this%zwts_col          (begc:endc))                 ; this%zwts_col          (:)     = nan
 
@@ -315,7 +313,6 @@ contains
     type(file_desc_t)  :: ncid_srf 
 	character(len=256) :: locfn 
     real(r8) ,pointer  :: wtd_Fan      (:)   ! read in - WTD	
-    real(r8) ,pointer  :: rechclim_Fan (:)   ! read in - Climatologic Recharge	
 
     integer :: year, rsyr      ! year (0, ...) for nstep
     integer :: month, rsmon    ! month (1, ..., 12) for nstep
@@ -380,25 +377,17 @@ contains
               long_name='water table depth', units='m', &
               interpinic_flag='interp', readvar=readvar, data=this%zwt_col)
 
-        this%rechclim_col(bounds%begc:bounds%endc) = 0._r8
 		this%zwt_col(bounds%begc:bounds%endc) = 0._r8
 	
         allocate(wtd_Fan(bounds%begg:bounds%endg))
-        allocate(rechclim_Fan(bounds%begg:bounds%endg))
 
         call getfil (fsurdat, locfn, 0)
         call ncd_pio_openfile (ncid_srf, locfn, 0)
 	
-        call ncd_io(ncid=ncid_srf, varname='EQZWT', flag='read', data=wtd_Fan, dim1name=grlnd, readvar=readvar)
+        call ncd_io(ncid=ncid_srf, varname='WTD', flag='read', data=wtd_Fan, dim1name=grlnd, readvar=readvar)
 
 		if (.not. readvar) then
-           call endrun(msg=' ERROR: EQZWT NOT on surfdata file'//errMsg(sourcefile, __LINE__)) 
-        end if
-
-        call ncd_io(ncid=ncid_srf, varname='RECHCLIM', flag='read', data=rechclim_Fan, dim1name=grlnd, readvar=readvar)
-
-		if (.not. readvar) then
-           call endrun(msg=' ERROR: RECHCLIM NOT on surfdata file'//errMsg(sourcefile, __LINE__)) 
+           call endrun(msg=' ERROR: WTD NOT on surfdata file'//errMsg(sourcefile, __LINE__)) 
         end if
 
         do c = bounds%begc,bounds%endc
@@ -410,23 +399,19 @@ contains
                         ! Note that the following hard-coded constants (on the next two lines)
                         ! seem implicitly related to aquifer_water_baseline
                         this%zwt_col(c) = wtd_Fan(g)
-					    this%rechclim_col(c) = rechclim_Fan(g)
                     else
                         this%zwt_col(c) = spval
-					    this%rechclim_col(c) = spval
                     end if
 
                 else
                     ! Note that the following hard-coded constants (on the next two lines) seem
                     ! implicitly related to aquifer_water_baseline
                     this%zwt_col(c) = wtd_Fan(g)
-				    this%rechclim_col(c) = rechclim_Fan(g)
                 end if
             end if
         end do
 
         deallocate(wtd_Fan)
-        deallocate(rechclim_Fan)
 
     else
         if (masterproc) write(iulog,*) '                                        '

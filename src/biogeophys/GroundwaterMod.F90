@@ -410,11 +410,15 @@ contains
 
           ! IF there is pumping, the GW lateral flow is ruled by Combination of Darcy's and Theim
           ! else if (ZeroHydroCell_glob(g)== 0 .and. GW_ratio_long(g) * qirrig_long(g) > 0._r8) then
-
+	! Prevent net lateral groundwater outflow when WTD reaches 80 m
+	  if (zwt_glob(g) >= 79.9_r8 .and. Qn_glob(g) < 0._r8) then
+	     Qn_glob(g) = 0._r8
+	  end if
              Qgw_lateral_g(g) = (Qn_glob(g) / (grc%area(g) * km2_to_mm2)) * dtime
           end if
  
        end do
+
 
        do fc = 1, num_hydrologyc
           c = filter_hydrologyc(fc)
@@ -505,7 +509,7 @@ contains
               end if! end of jwt if construct
 
               zwt(c) = max(0.0_r8,zwt(c))
-              ! zwt(c) = min(80._r8,zwt(c))
+              zwt(c) = min(120._r8,zwt(c))
           end if
        end do
 
@@ -786,7 +790,7 @@ contains
                  end if! end of jwt if construct
 
                  zwt(c) = max(0.0_r8,zwt(c))
-                 ! zwt(c) = min(80._r8,zwt(c))    
+                 zwt(c) = min(120._r8,zwt(c))    
           end do
        end if
        ! To get the weighted average ZWT accross all columns within each cell  
@@ -967,7 +971,10 @@ contains
 
              QlatField_north(g) = (t_edge + b_edge)/2._r8
              QlatField_east(g)  = (r_edge + l_edge)/2._r8
-
+         ! Prevent net lateral groundwater outflow when WTD reaches 80 m
+          if (zwt_glob(g) >= 79.9_r8 .and. Qn_glob(g) < 0._r8) then
+             Qn_glob(g) = 0._r8
+          end if
              Qgw_lateral_g(g) = (Qn_glob(g) / (grc%area(g) * km2_to_mm2)) * dtime
           end if
  
@@ -1074,7 +1081,7 @@ contains
               end if! end of jwt if construct
 
               zwt(c) = max(0.0_r8,zwt(c))
-              ! zwt(c) = min(80._r8,zwt(c))
+              zwt(c) = min(120._r8,zwt(c))
           end if
        end do
 
@@ -1349,7 +1356,7 @@ contains
                  end if! end of jwt if construct
 
                  zwt(c) = max(0.0_r8,zwt(c))
-                 ! zwt(c) = min(80._r8,zwt(c))    
+                 zwt(c) = min(120._r8,zwt(c))  
           end do
        end if
 	
@@ -1664,7 +1671,7 @@ contains
               end if! end of jwt if construct
 
               zwt(c) = max(0.0_r8,zwt(c))
-              ! zwt(c) = min(80._r8,zwt(c))
+              zwt(c) = min(120._r8,zwt(c))
           end if
        end do
 
@@ -1865,7 +1872,7 @@ contains
                  end if! end of jwt if construct
 
                  zwt(c) = max(0.0_r8,zwt(c))
-                 ! zwt(c) = min(80._r8,zwt(c))    
+                 zwt(c) = min(120._r8,zwt(c))    
           end do
        end if
 
@@ -1899,7 +1906,7 @@ contains
     integer  :: jwt2(bounds%begc:bounds%endc)                ! index of the soil layer right above the water table (-)
 
     real(r8), parameter :: m_to_mm = 1.e3_r8	     
-    character(len=8), parameter :: bedrockORregolit = 'regolith'  ! Choose between 'regolith' and 'bedrock_'
+    character(len=8) :: bedrockORregolit
 
 
     associate(                                                             &                              
@@ -1932,6 +1939,12 @@ contains
        c = filter_hydrologyc(fc)
        g = col%gridcell(c)
 
+       ! Select bedrock or regolith formulation based on bedrock depth
+       if (col%bedrock_depth(c) < 2.0_r8) then
+          bedrockORregolit = 'bedrock_'
+       else
+          bedrockORregolit = 'regolith'
+       end if
 
        if (bedrockORregolit == 'bedrock_') then 
           !!!!!!! Zeng et al.(2018): e_folding_length (m) calculations for bedrock	 
@@ -1958,15 +1971,15 @@ contains
           do j = jwt2(c)+1,10
              Transmiss(c) = Transmiss(c) + clayP(c,j) * hksat(c,j) * dz(c,j) * m_to_mm
           end do
-          Transmiss(c) = Transmiss(c) + clayP(c,10) * hksat(c,10) * col%FEDEPTH(c) * m_to_mm
+          Transmiss(c) = Transmiss(c) + clayP(c,10) * hksat(c,10) * e_folding_length * m_to_mm
 
        else if (jwt2(c) .eq. 10) then
           Transmiss(c) = clayP(c,10) * hksat(c,10) * (zi(c,10)-zwt(c)) * m_to_mm &
-                         + clayP(c,10) * hksat(c,10) * col%FEDEPTH(c) * m_to_mm
+                         + clayP(c,10) * hksat(c,10) * e_folding_length * m_to_mm
 
        else if (jwt2(c) > 10) then
-          Transmiss(c) = clayP(c,10) * hksat(c,10) * col%FEDEPTH(c) * m_to_mm &
-                         * exp((zi(c,10)-zwt(c))/col%FEDEPTH(c))
+          Transmiss(c) = clayP(c,10) * hksat(c,10) * e_folding_length * m_to_mm &
+                         * exp((zi(c,10)-zwt(c))/e_folding_length)
        end if
 	   !Transmiss(c) = 0.1_r8 * Transmiss(c)
        !!!! 1.5-m Trannsmissible Tickness -- end

@@ -23,7 +23,8 @@ module CropType
   private
   !
   ! !PUBLIC DATA TYPES:
-  !
+    public :: latbaset
+    public :: latbaset_max_lat
   ! Crop state variables structure
   type, public :: crop_type
 
@@ -240,12 +241,12 @@ contains
          avgflag='A', long_name='crop phenology phase', &
          ptr_patch=this%cphase_patch, default='active')
 
-    if ( (trim(this%baset_mapping) == baset_map_latvary) )then
+    !if ( (trim(this%baset_mapping) == baset_map_latvary) )then
        this%latbaset_patch(begp:endp) = spval
        call hist_addfld1d (fname='LATBASET', units='degree C', &
             avgflag='A', long_name='latitude vary base temperature for gddplant', &
             ptr_patch=this%latbaset_patch, default='inactive')
-    end if
+    !end if
 
   end subroutine InitHistory
 
@@ -255,7 +256,8 @@ contains
     use landunit_varcon, only : istcrop
     use PatchType, only : patch
     use clm_instur, only : fert_cft
-    use pftconMod        , only : pftcon 
+    use pftconMod        , only : nswheat, nirrig_swheat, pftcon
+	use pftconMod        , only : nrice, nirrig_rice
     use GridcellType     , only : grc
     use shr_infnan_mod   , only : nan => shr_infnan_nan, assignment(=)
     ! !ARGUMENTS:
@@ -275,16 +277,18 @@ contains
 
        this%nyrs_crop_active_patch(p) = 0
 
-       if ( grc%latdeg(g) >= 0.0_r8 .and. grc%latdeg(g) <= 30.0_r8) then
-          this%latbaset_patch(p)=pftcon%baset(ivt)+12._r8-0.4_r8*grc%latdeg(g)
-       else if (grc%latdeg(g) < 0.0_r8 .and. grc%latdeg(g) >= -30.0_r8) then
-          this%latbaset_patch(p)=pftcon%baset(ivt)+12._r8+0.4_r8*grc%latdeg(g)
-       else
-          this%latbaset_patch(p)=pftcon%baset(ivt)
-       end if
-       if ( trim(this%baset_mapping) == baset_map_constant ) then
-          this%latbaset_patch(p) = nan
-       end if
+	   if ( trim(this%baset_mapping) == baset_map_constant ) then
+		  this%latbaset_patch(p) = pftcon%baset(ivt)
+	   else
+		   if ((ivt == nswheat) .or. (ivt == nirrig_swheat)) then
+			  this%latbaset_patch(p) = latbaset(pftcon%baset(ivt), grc%latdeg(g), 6._r8, 0.19_r8)
+		   else if ((ivt == nrice) .or. (ivt == nirrig_rice)) then
+			  this%latbaset_patch(p) = latbaset(pftcon%baset(ivt), grc%latdeg(g), 6.8_r8, 0.26_r8)
+		   else
+			  this%latbaset_patch(p) = latbaset(pftcon%baset(ivt), grc%latdeg(g), &
+				   this%baset_latvary_intercept, this%baset_latvary_slope)
+		   end if
+		end if
     end do
 !DLL -- end of mods
 
@@ -528,6 +532,7 @@ contains
     use clm_time_manager , only : get_step_size, get_nstep
     use clm_varpar       , only : nlevsno, nlevgrnd
     use pftconMod        , only : nswheat, nirrig_swheat, pftcon
+	use pftconMod        , only : nrice, nirrig_rice
     use pftconMod        , only : nwwheat, nirrig_wwheat
     use pftconMod        , only : nsugarcane, nirrig_sugarcane
     use ColumnType       , only : col
@@ -574,15 +579,16 @@ contains
     
     call extract_accum_field ('GDDPLANT', rbufslp, nstep)
     do p = begp,endp
-      rbufslp(p) = max(0.,this%gddplant_patch(p)-rbufslp(p))
+      rbufslp(p) = max(0.0_r8,this%gddplant_patch(p)-rbufslp(p))
     end do
     call update_accum_field  ('GDDPLANT', rbufslp, nstep)
     do p = begp,endp
        if (this%croplive_patch(p)) then ! relative to planting date
           ivt = patch%itype(p)
-          if ( (trim(this%baset_mapping) == baset_map_latvary) .and. &
-             ((ivt == nswheat) .or. (ivt == nirrig_swheat) .or. &
-              (ivt == nsugarcane) .or. (ivt == nirrig_sugarcane)) ) then
+			if ( (trim(this%baset_mapping) == baset_map_latvary) .and. &
+			   ((ivt == nswheat) .or. (ivt == nirrig_swheat) .or. &
+				(ivt == nrice) .or. (ivt == nirrig_rice) .or. &
+				(ivt == nsugarcane) .or. (ivt == nirrig_sugarcane)) ) then
              rbufslp(p) = max(0._r8, min(pftcon%mxtmp(ivt), &
              t_ref2m_patch(p)-(SHR_CONST_TKFRZ + this%latbaset_patch(p)))) &
              * dtime/SHR_CONST_CDAY
@@ -718,6 +724,22 @@ contains
     end if
 
   end subroutine checkDates
+  real(r8) function latbaset(baset, latdeg, baset_latvary_intercept, baset_latvary_slope)
+    real(r8), intent(in) :: baset
+    real(r8), intent(in) :: latdeg
+    real(r8), intent(in) :: baset_latvary_intercept
+    real(r8), intent(in) :: baset_latvary_slope
 
+    latbaset = baset + baset_latvary_intercept - &
+         min(baset_latvary_intercept, baset_latvary_slope * abs(latdeg))
+
+  end function latbaset
+
+  real(r8) function latbaset_max_lat(intercept, slope)
+    real(r8), intent(in) :: intercept
+    real(r8), intent(in) :: slope
+
+    latbaset_max_lat = intercept / slope
+  end function latbaset_max_lat
 end module CropType
 
