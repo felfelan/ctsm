@@ -210,6 +210,13 @@ contains
               soilhydrology_inst, waterstate_inst)
       end if
 
+      ! Reset the per-time-step water added by capping zwt at zwt_max (accumulated in
+      ! UpdateGWFanLatPump, Drainage and LateralFlowPowerLaw via ClampZwtMax)
+      do fc = 1, num_hydrologyc
+         c = filter_hydrologyc(fc)
+         soilhydrology_inst%zwt_cap_clip_col(c) = 0._r8
+      end do
+
       if (use_aquifer_layer()) then
 
          !call PerchedWaterTable(bounds, num_hydrologyc, filter_hydrologyc, &

@@ -57,9 +57,6 @@ module SoilWaterMovementMod
   ! FFelfelani Comment: Groundwater Scheme
   integer, parameter :: gw_default  = 0
   integer, parameter :: gw_FanLat_Pump  = 1
-  integer, parameter :: gw_FanLat_TheimPump  = 2
-  integer, parameter :: gw_Theim_GleesonTransmiss  = 3
-  integer, parameter :: gw_Fan  = 4
   
   ! Soil hydraulic properties
   integer, parameter :: soil_hp_clapphornberg_1978=0
@@ -176,6 +173,12 @@ contains
        if((groundwater_scheme == gw_FanLat_Pump) .and. &
             (lower_boundary_condition < 3)) then
           call endrun(subname // ':: ERROR inconsistent groundwater_scheme namelist: gw_FanLat_Pump must use bc_aquifer/bc_waterTable')
+       endif
+       if((groundwater_scheme /= gw_default) .and. (groundwater_scheme /= gw_FanLat_Pump)) then
+          call endrun(subname // ':: ERROR groundwater_scheme must be 0 (gw_default) or 1 (gw_FanLat_Pump)')
+       endif
+       if((groundwater_scheme == gw_default) .and. use_pumping) then
+          call endrun(subname // ':: ERROR use_pumping requires groundwater_scheme = 1 (gw_FanLat_Pump)')
        endif
    
 

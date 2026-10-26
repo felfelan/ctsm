@@ -45,9 +45,6 @@ module BalanceCheckMod
   ! FFelfelani Comment: Groundwater Scheme
   integer, parameter :: gw_default  = 0
   integer, parameter :: gw_FanLat_Pump  = 1
-  integer, parameter :: gw_FanLat_TheimPump  = 2
-  integer, parameter :: gw_Theim_GleesonTransmiss  = 3
-  integer, parameter :: gw_Fan  = 4 
   
   
   character(len=*), parameter, private :: sourcefile = &
@@ -307,7 +304,7 @@ contains
 
               end do
 
-          case(gw_FanLat_Pump, gw_FanLat_TheimPump, gw_Theim_GleesonTransmiss, gw_Fan)
+          case(gw_FanLat_Pump)
 
               do c = bounds%begc, bounds%endc
 

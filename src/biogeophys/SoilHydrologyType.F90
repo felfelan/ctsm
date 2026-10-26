@@ -30,6 +30,7 @@ Module SoilHydrologyType
      real(r8), pointer :: Qgw_lateral_col   (:)     ! col Groundwater lateral flow (mm/s)
      real(r8), pointer :: AqTransmiss_col   (:)     ! col Aquifer Transmissivity (mm)
      real(r8), pointer :: Pump_wa_col       (:)     ! col pumped water (mm/s)
+     real(r8), pointer :: zwt_cap_clip_col  (:)     ! col water added by clamping zwt at zwt_max this time step (mm)
      real(r8), pointer :: QlatField_northing_grc (:)! grc Groundwater lateral flow towards north (+)(mm)
      real(r8), pointer :: QlatField_easting_grc  (:)! grc Groundwater lateral flow towards east (+)(mm)
      real(r8), pointer :: Qgw_lateral_grc   (:)     ! grc Groundwater lateral budget (mm)
@@ -129,6 +130,7 @@ contains
     allocate(this%Qgw_lateral_col   (begc:endc))                 ; this%Qgw_lateral_col   (:)     = nan
     allocate(this%AqTransmiss_col   (begc:endc))                 ; this%AqTransmiss_col   (:)     = nan
     allocate(this%Pump_wa_col       (begc:endc))                 ; this%Pump_wa_col       (:)     = nan
+    allocate(this%zwt_cap_clip_col  (begc:endc))                 ; this%zwt_cap_clip_col  (:)     = nan
     allocate(this%QlatField_northing_grc (begg:endg))            ; this%QlatField_northing_grc(:) = nan
     allocate(this%QlatField_easting_grc  (begg:endg))            ; this%QlatField_easting_grc (:) = nan
     allocate(this%Qgw_lateral_grc   (begg:endg))                 ; this%Qgw_lateral_grc   (:)     = nan
@@ -206,6 +208,11 @@ contains
     call hist_addfld1d (fname='Pumped_Wa',  units='mm/s',  &
          avgflag='A', long_name='Pumped Water from the unconfined aquifer (vegetated landunits only)', &
          ptr_col=this%Pump_wa_col, l2g_scale_type='veg')
+
+    this%zwt_cap_clip_col(begc:endc) = spval
+    call hist_addfld1d (fname='ZWT_CAP_CLIP',  units='mm',  &
+         avgflag='SUM', long_name='Water added by capping the water table at zwt_max (sum over history interval; vegetated landunits only)', &
+         ptr_col=this%zwt_cap_clip_col, l2g_scale_type='veg')
 
     this%QlatField_northing_grc(begg:endg) = spval
     call hist_addfld1d (fname='QlatField_northing_grc',  units='mm',  &

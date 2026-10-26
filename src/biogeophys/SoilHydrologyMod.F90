@@ -19,6 +19,7 @@ module SoilHydrologyMod
   use ColumnType        , only : col                
   use PatchType         , only : patch
   use IrrigationMod     , only : irrigation_type
+  use GroundwaterMod    , only : ClampZwtMax
   !
   ! !PUBLIC TYPES:
   implicit none
@@ -44,10 +45,7 @@ module SoilHydrologyMod
   ! FFelfelani Comment: Groundwater Scheme
   integer, parameter :: gw_default  = 0
   integer, parameter :: gw_FanLat_Pump  = 1
-  integer, parameter :: gw_FanLat_TheimPump  = 2
-  integer, parameter :: gw_Theim_GleesonTransmiss  = 3
-  integer, parameter :: gw_Fan  = 4 
-  
+
   character(len=*), parameter, private :: sourcefile = &
        __FILE__
 
@@ -895,30 +893,12 @@ contains
           ! Groundwater scheme: Default
           case(gw_default)
             if (masterproc .and. secs == 0) write(iulog,*) 'This is gw_default groundwater scheme'
-            if (use_pumping == .true.) then
-                if (masterproc .and. secs == 0) write(iulog,*) 'This is gw_default with Pumping groundwater scheme'
-                call groundwater_inst%UpdateGWDefaultPump(bounds, num_hydrologyc, filter_hydrologyc,&
-                     soilhydrology_inst, soilstate_inst,waterstate_inst,irrigation_inst)
-            end if 
 
-          ! Groundwater scheme: Theim Theory + Ying Fan Transmissivity 
+          ! Groundwater scheme: lateral flow (Fan transmissivity) with optional pumping
           case(gw_FanLat_Pump)
-            if (masterproc .and. secs == 0) write(iulog,*) 'This is gw_FanLat_Pump groundwater  scheme  '  
+            if (masterproc .and. secs == 0) write(iulog,*) 'This is gw_FanLat_Pump groundwater  scheme  '
             call groundwater_inst%UpdateGWFanLatPump(bounds, num_hydrologyc, filter_hydrologyc,&
                  soilhydrology_inst, soilstate_inst,waterstate_inst,irrigation_inst, waterflux_inst)
-
-          case(gw_FanLat_TheimPump)
-            if (masterproc .and. secs == 0) write(iulog,*) 'This is gw_FanLat_TheimPump groundwater  scheme  '  
-            call groundwater_inst%UpdateGWFanLatTheimPump(bounds, num_hydrologyc, filter_hydrologyc,&
-                 soilhydrology_inst, soilstate_inst,waterstate_inst,irrigation_inst)
-				 
-          ! Groundwater scheme: Theim Theory + Gleeson Transmissivity 
-          case(gw_Theim_GleesonTransmiss)
-            if (masterproc .and. secs == 0) write(iulog,*) 'This is gw_Theim_GleesonTransmiss groundwater scheme'
-
-          ! Groundwater scheme: Ying Fan
-          case(gw_Fan)
-            if (masterproc .and. secs == 0) write(iulog,*) 'This is gw_Fan groundwater scheme'
 
           case default
              call endrun(subname // ':: the groundwater scheme must be specified !')
@@ -1142,6 +1122,7 @@ contains
           hkdepth            =>    soilhydrology_inst%hkdepth_col        , & ! Input:  [real(r8) (:)   ] decay factor (m)                                  
           frost_table        =>    soilhydrology_inst%frost_table_col    , & ! Input:  [real(r8) (:)   ] frost table depth (m)                             
           zwt                =>    soilhydrology_inst%zwt_col            , & ! Input:  [real(r8) (:)   ] water table depth (m)                             
+          zwt_cap_clip       =>    soilhydrology_inst%zwt_cap_clip_col   , & ! Output: [real(r8) (:)   ] water added by clamping zwt at zwt_max this step (mm)
           zwt_perched        =>    soilhydrology_inst%zwt_perched_col    , & ! Input:  [real(r8) (:)   ] perched water table depth (m)                     
           wa                 =>    soilhydrology_inst%wa_col             , & ! Input:  [real(r8) (:)   ] water in the unconfined aquifer (mm)              
           ice                =>    soilhydrology_inst%ice_col            , & ! Input:  [real(r8) (:,:) ] soil layer moisture (mm)                         
@@ -1482,7 +1463,7 @@ contains
              end if! end of jwt if construct
 
              zwt(c) = max(0.0_r8,zwt(c))
-             zwt(c) = min(120._r8,zwt(c))
+             call ClampZwtMax(zwt(c), watsat(c,nlevsoi), sucsat(c,nlevsoi), bsw(c,nlevsoi), zwt_cap_clip(c))
 
           endif
 
@@ -2182,6 +2163,7 @@ contains
           hkdepth            =>    soilhydrology_inst%hkdepth_col        , & ! Input:  [real(r8) (:)   ] decay factor (m)                                  
           frost_table        =>    soilhydrology_inst%frost_table_col    , & ! Input:  [real(r8) (:)   ] frost table depth (m)                             
           zwt                =>    soilhydrology_inst%zwt_col            , & ! Input:  [real(r8) (:)   ] water table depth (m)                             
+          zwt_cap_clip       =>    soilhydrology_inst%zwt_cap_clip_col   , & ! Output: [real(r8) (:)   ] water added by clamping zwt at zwt_max this step (mm)
           wa                 =>    soilhydrology_inst%wa_col             , & ! Input:  [real(r8) (:)   ] water in the unconfined aquifer (mm)              
           ice                =>    soilhydrology_inst%ice_col            , & ! Input:  [real(r8) (:,:) ] soil layer moisture (mm)                         
           qcharge            =>    soilhydrology_inst%qcharge_col        , & ! Input:  [real(r8) (:)   ] aquifer recharge rate (mm/s)                      
@@ -2299,7 +2281,7 @@ contains
           endif
           
           zwt(c) = max(0.0_r8,zwt(c))
-          zwt(c) = min(120._r8,zwt(c))
+          call ClampZwtMax(zwt(c), watsat(c,nlevsoi), sucsat(c,nlevsoi), bsw(c,nlevsoi), zwt_cap_clip(c))
           
        end do
 
