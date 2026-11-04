@@ -737,21 +737,28 @@ contains
     allocate(GWratio(bounds%begg:bounds%endg))
     call ncd_io(ncid=ncid, varname='USGS_mean', flag='read', data=GWratio, dim1name=grlnd, readvar=readvar)
     if (.not. readvar) then
-       call shr_sys_abort(' ERROR: USGS GW ratio NOT on surfdata file'//&
-            errMsg(sourcefile, __LINE__)) 
-    end if
+      ! Abort when groundwater_scheme is not 0
+      ! if (groundwater_scheme == 0 ) then
+      !  call shr_sys_abort(' ERROR: USGS GW ratio NOT on surfdata file'//&
+      !       errMsg(sourcefile, __LINE__)) 
+      ! end if
+      if (masterproc) write(iulog,*) 'USGS_mean not on surfdata; setting GW_ratio to 0'
+      grc%GW_ratio(bounds%begg:bounds%endg) = 0._r8
+      col%GW_ratio(bounds%begc:bounds%endc) = 0._r8
+    else
 	
-    !  Determine gridcell USGS GW Ratio
-    do g = bounds%begg,bounds%endg
-       grc%GW_ratio(g) = max(GWratio(g), 0.0_r8)
-    end do
+      !  Determine gridcell USGS GW Ratio
+      do g = bounds%begg,bounds%endg
+         grc%GW_ratio(g) = max(GWratio(g), 0.0_r8)
+      end do
 
-    ! Set Column USGS GW ratio	
-    do c = begc,endc
-       g = col%gridcell(c)
-       ! check for near zero slopes, set minimum value
-       col%GW_ratio(c) = max(GWratio(g), 0.0_r8)
-    end do
+      ! Set Column USGS GW ratio	
+      do c = begc,endc
+         g = col%gridcell(c)
+         ! check for near zero slopes, set minimum value
+         col%GW_ratio(c) = max(GWratio(g), 0.0_r8)
+      end do
+    end if
     deallocate(GWratio)
 	
 	

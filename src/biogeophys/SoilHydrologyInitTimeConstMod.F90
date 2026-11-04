@@ -96,13 +96,15 @@ contains
 
     call ncd_io(ncid=ncid, varname='WTD', flag='read', data=wtd_Fan, dim1name=grlnd, readvar=readvar)
     if (.not. readvar) then
-       call endrun(msg=' ERROR: WTD NOT on surfdata file'//errMsg(sourcefile, __LINE__)) 
+       if (masterproc) write(iulog,*) 'WTD NOT on surfdata file'
+       ! For groundwater_scheme .not. 0, abort
+      !  call endrun(msg=' ERROR: WTD NOT on surfdata file'//errMsg(sourcefile, __LINE__)) 
     end if	
     !do c = bounds%begc, bounds%endc
     !   g = col%gridcell(c)
     !   soilstate_inst%wtdFan_col(c) = wtd_Fan(g)
     !end do
-    !deallocate(wtd_Fan)
+    deallocate(wtd_Fan)
 	
     do c = bounds%begc,bounds%endc
        g = col%gridcell(c)
@@ -136,7 +138,7 @@ contains
           end if
        end if
     end do
-    deallocate(wtd_Fan)
+
 	
     ! Initialize VIC variables
 
