@@ -94,10 +94,13 @@ contains
     call getfil (fsurdat, locfn, 0)
     call ncd_pio_openfile (ncid, locfn, 0)
 
+    ! WTD is optional: it is read but not currently used (uses below are commented out)
     call ncd_io(ncid=ncid, varname='WTD', flag='read', data=wtd_Fan, dim1name=grlnd, readvar=readvar)
     if (.not. readvar) then
-       call endrun(msg=' ERROR: WTD NOT on surfdata file'//errMsg(sourcefile, __LINE__)) 
-    end if	
+       if (masterproc) then
+          write(iulog,*) 'WTD not on surfdata file (not used in current code); continuing'
+       end if
+    end if
     !do c = bounds%begc, bounds%endc
     !   g = col%gridcell(c)
     !   soilstate_inst%wtdFan_col(c) = wtd_Fan(g)

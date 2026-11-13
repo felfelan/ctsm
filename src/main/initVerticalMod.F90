@@ -19,6 +19,7 @@ module initVerticalMod
   use clm_varctl        , only : use_vancouver, use_mexicocity, use_vertsoilc, use_extralakelayers
   use clm_varctl        , only : use_bedrock, soil_layerstruct
   use clm_varctl        , only : use_fates
+  use clm_varctl        , only : use_pumping
   use clm_varcon        , only : zlak, dzlak, zsoi, dzsoi, zisoi, dzsoi_decomp, spval, ispval, grlnd 
   use column_varcon     , only : icol_roof, icol_sunwall, icol_shadewall, is_hydrologically_active
   use landunit_varcon   , only : istdlak, istice_mec
@@ -734,11 +735,21 @@ contains
     ! FFelfelani Comment: Read in USGS GW ratio
     !-----------------------------------------------
 
+    ! USGS_mean is required only when use_pumping = .true.; otherwise, if it is
+    ! absent from the surface dataset, GW_ratio = 0 (all irrigation from rivers).
     allocate(GWratio(bounds%begg:bounds%endg))
     call ncd_io(ncid=ncid, varname='USGS_mean', flag='read', data=GWratio, dim1name=grlnd, readvar=readvar)
     if (.not. readvar) then
-       call shr_sys_abort(' ERROR: USGS GW ratio NOT on surfdata file'//&
-            errMsg(sourcefile, __LINE__)) 
+       if (use_pumping) then
+          call shr_sys_abort(' ERROR: USGS GW ratio (USGS_mean) NOT on surfdata file;'// &
+               ' required when use_pumping = .true.'//errMsg(sourcefile, __LINE__))
+       else
+          if (masterproc) then
+             write(iulog,*) 'USGS_mean not on surfdata file: setting GW_ratio = 0 ', &
+                  '(all irrigation withdrawn from rivers)'
+          end if
+          GWratio(:) = 0._r8
+       end if
     end if
 	
     !  Determine gridcell USGS GW Ratio
